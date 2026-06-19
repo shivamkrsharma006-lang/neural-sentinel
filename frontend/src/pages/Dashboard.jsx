@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import api from '../api/client'
 import { useAuthStore } from '../store/authStore'
-import { ShieldAlert, Camera, Eye, Activity, Wifi, WifiOff, Power } from 'lucide-react'
+import { ShieldAlert, Camera, Eye, Activity, Wifi, WifiOff, Power, X, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
 import EventFeed from '../components/EventFeed'
 
 // Module-level WS singleton — survives React StrictMode double-mount
@@ -48,7 +48,18 @@ export default function Dashboard() {
   const [liveEvents, setLiveEvents] = useState([])
   const [isArmed, setIsArmed] = useState(null)
   const [sysLoading, setSysLoading] = useState(false)
-  const wsRef = useRef(null)
+  const [isSurveillance, setIsSurveillance] = useState(false)
+  const [fullscreenCamIdx, setFullscreenCamIdx] = useState(null)
+
+  const handlePrevCamera = useCallback((e) => {
+    if (e) e.stopPropagation()
+    setFullscreenCamIdx(prev => (prev === 0 ? cameras.length - 1 : prev - 1))
+  }, [cameras.length])
+
+  const handleNextCamera = useCallback((e) => {
+    if (e) e.stopPropagation()
+    setFullscreenCamIdx(prev => (prev === cameras.length - 1 ? 0 : prev + 1))
+  }, [cameras.length])
 
   const fetchData = useCallback(async () => {
     try {
@@ -115,13 +126,44 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])  // fetchData intentionally excluded — it never changes identity meaningfully
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (fullscreenCamIdx !== null) {
+        if (e.key === 'Escape') {
+          setFullscreenCamIdx(null)
+        } else if (e.key === 'ArrowLeft') {
+          handlePrevCamera()
+        } else if (e.key === 'ArrowRight') {
+          handleNextCamera()
+        }
+      } else if (isSurveillance) {
+        if (e.key === 'Escape') {
+          setIsSurveillance(false)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [fullscreenCamIdx, isSurveillance, handlePrevCamera, handleNextCamera])
+
   const gridClass = cameras.length === 1 ? 'n1' : cameras.length === 2 ? 'n2' : cameras.length === 3 ? 'n3' : 'n4'
 
   return (
     <>
       <div className="topbar">
         <div className="topbar-title">Live Dashboard</div>
-        <div className="topbar-right">
+        <div className="topbar-right" style={{ display: 'flex', gap: 10 }}>
+          <button 
+            className="btn btn-sm btn-ghost" 
+            onClick={() => setIsSurveillance(true)}
+            disabled={cameras.length === 0}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            title="Enter full-screen surveillance grid"
+          >
+            <Maximize2 size={14} />
+            Surveillance Mode
+          </button>
+
           <button 
             className={`btn btn-sm ${isArmed === true ? 'btn-success' : 'btn-ghost'}`} 
             onClick={toggleArm}
@@ -142,85 +184,27 @@ export default function Dashboard() {
       </div>
 
       <div className="page-body">
-        {/* Stats */}
-        <div className="stats-grid">
-          <div className="stat-card danger">
-            <div className="stat-label">Critical Events</div>
-            <div className="stat-value danger">{stats.critical}</div>
+        {/* Sleek Horizontal Metrics Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+          <div className="stat-card danger" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="stat-label" style={{ fontSize: 10, letterSpacing: 0.5 }}>Critical Events</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--danger)', fontFamily: 'var(--font-mono)' }}>{stats.critical}</div>
           </div>
-          <div className="stat-card warning">
-            <div className="stat-label">High Risk Events</div>
-            <div className="stat-value warning">{stats.high}</div>
+          <div className="stat-card warning" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="stat-label" style={{ fontSize: 10, letterSpacing: 0.5 }}>High Risk Events</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warning)', fontFamily: 'var(--font-mono)' }}>{stats.high}</div>
           </div>
-          <div className="stat-card primary">
-            <div className="stat-label">Total Events</div>
-            <div className="stat-value primary">{stats.total}</div>
+          <div className="stat-card primary" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="stat-label" style={{ fontSize: 10, letterSpacing: 0.5 }}>Active Detections</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>{stats.total}</div>
           </div>
-          <div className="stat-card success">
-            <div className="stat-label">Cameras Online</div>
-            <div className="stat-value success">{stats.cameras_online}/{cameras.length}</div>
+          <div className="stat-card success" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="stat-label" style={{ fontSize: 10, letterSpacing: 0.5 }}>Cameras Online</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>{stats.cameras_online}/{cameras.length}</div>
           </div>
         </div>
 
-        {/* V4 Enhanced Stats Row */}
-        {v4Stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
-            <div className="stat-card" style={{ padding: '12px 14px' }}>
-              <div className="stat-label" style={{ fontSize: 11 }}>Persons Today</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)' }}>{v4Stats.total_persons}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)' }}>{v4Stats.known_persons} known / {v4Stats.unknown_persons} unknown</div>
-            </div>
-            <div className="stat-card" style={{ padding: '12px 14px' }}>
-              <div className="stat-label" style={{ fontSize: 11 }}>Vehicles Today</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--info, #4cc9f0)' }}>{v4Stats.total_vehicles}</div>
-            </div>
-            <div className="stat-card" style={{ padding: '12px 14px' }}>
-              <div className="stat-label" style={{ fontSize: 11 }}>Alerts Today</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--danger)' }}>{v4Stats.alerts_triggered}</div>
-            </div>
-            <div className="stat-card" style={{ padding: '12px 14px' }}>
-              <div className="stat-label" style={{ fontSize: 11 }}>Peak Activity</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--warning)' }}>{v4Stats.peak_hour ? `${v4Stats.peak_hour}:00` : '—'}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Hourly Activity Bar Chart */}
-        {v4Stats?.hourly_activity && (
-          <div className="card" style={{ marginBottom: 16, padding: '14px 16px' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--text2)' }}>Today's Activity</div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }}>
-              {Object.entries(v4Stats.hourly_activity).map(([hour, count]) => {
-                const maxVal = Math.max(1, ...Object.values(v4Stats.hourly_activity))
-                const pct = (count / maxVal) * 100
-                const isNow = parseInt(hour) === new Date().getHours()
-                return (
-                  <div
-                    key={hour}
-                    title={`${hour}:00 — ${count} events`}
-                    style={{
-                      flex: 1,
-                      height: `${Math.max(2, pct)}%`,
-                      background: isNow ? 'var(--primary)' : count > 0 ? 'var(--primary-dim, rgba(99,102,241,0.3))' : 'var(--bg3, rgba(255,255,255,0.05))',
-                      borderRadius: '2px 2px 0 0',
-                      transition: 'height .3s',
-                      cursor: 'default',
-                    }}
-                  />
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>00</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>06</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>12</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>18</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>23</span>
-            </div>
-          </div>
-        )}
-
-        {/* Camera Grid + Live Events */}
+        {/* Camera Grid + Live Events — Main Prominent Layout */}
         <div style={{ display: 'grid', gridTemplateColumns: cameras.length > 0 ? '1fr 340px' : '1fr', gap: 16, alignItems: 'start' }}>
           {/* Camera Grid */}
           <div>
@@ -235,7 +219,14 @@ export default function Dashboard() {
             ) : (
               <div className={`camera-grid ${gridClass}`}>
                 {cameras.slice(0, 4).map((cam, idx) => (
-                  <CameraCell key={cam.id} camera={cam} index={idx + 1} liveEvents={liveEvents} isArmed={isArmed} />
+                  <CameraCell 
+                    key={cam.id} 
+                    camera={cam} 
+                    index={idx + 1} 
+                    liveEvents={liveEvents} 
+                    isArmed={isArmed} 
+                    onClick={() => setFullscreenCamIdx(idx)}
+                  />
                 ))}
               </div>
             )}
@@ -252,12 +243,138 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Analytics Section — Positioned below the streams */}
+        {v4Stats && (
+          <div className="card" style={{ marginTop: 20, padding: '16px 20px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Activity size={14} color="var(--primary)" /> System Activity & Metrics Summary
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24, alignItems: 'center' }}>
+              {/* Chart */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>Hourly Detection Frequency</span>
+                  {v4Stats.total_events === 0 && <span style={{ fontSize: 11, color: 'var(--danger)' }}>No activity recorded today</span>}
+                </div>
+                
+                <div className="activity-bar-container">
+                  {Object.entries(v4Stats.hourly_activity || {}).map(([hour, count]) => {
+                    const maxVal = Math.max(1, ...Object.values(v4Stats.hourly_activity || {}))
+                    const pct = (count / maxVal) * 100
+                    const isNow = parseInt(hour) === new Date().getHours()
+                    
+                    let barColor = 'rgba(255, 255, 255, 0.04)'
+                    if (count > 0) {
+                      barColor = isNow ? 'var(--accent)' : 'var(--primary)'
+                    } else if (isNow) {
+                      barColor = 'rgba(34, 211, 238, 0.15)'
+                    }
+                    
+                    return (
+                      <div
+                        key={hour}
+                        className="activity-bar"
+                        data-tooltip={`${hour}:00 — ${count} event${count === 1 ? '' : 's'}`}
+                        style={{
+                          height: `${Math.max(4, pct)}%`,
+                          background: barColor,
+                        }}
+                      />
+                    )
+                  })}
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                  {['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:00'].map(lbl => (
+                    <span key={lbl} style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>{lbl}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Metrics list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>Persons Detected</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
+                    {v4Stats.total_persons} <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--text3)' }}>({v4Stats.known_persons} K / {v4Stats.unknown_persons} U)</span>
+                  </span>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>Vehicles Tracked</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{v4Stats.total_vehicles}</span>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>High Risk Events</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>{v4Stats.alerts_triggered}</span>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>Peak Hour</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--warning)' }}>{v4Stats.peak_hour ? `${v4Stats.peak_hour}:00` : '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Surveillance Overlay Grid */}
+      {isSurveillance && (
+        <div className="surveillance-overlay">
+          <button className="exit-surveillance-btn" onClick={() => setIsSurveillance(false)}>
+            <Minimize2 size={13} /> Exit Surveillance
+          </button>
+          <div className={`camera-grid ${gridClass}`} style={{ flex: 1 }}>
+            {cameras.slice(0, 4).map((cam, idx) => (
+              <CameraCell 
+                key={cam.id} 
+                camera={cam} 
+                index={idx + 1} 
+                liveEvents={liveEvents} 
+                isArmed={isArmed} 
+                onClick={() => setFullscreenCamIdx(idx)} 
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen stream detail zoom view */}
+      {fullscreenCamIdx !== null && cameras[fullscreenCamIdx] && (
+        <div className="fullscreen-stream-overlay">
+          <button className="fullscreen-close-btn" onClick={() => setFullscreenCamIdx(null)} title="Close (Esc)">
+            <X size={20} />
+          </button>
+          
+          <div className="fullscreen-nav-zone left" onClick={handlePrevCamera} title="Previous Camera (Left Arrow)">
+            <ChevronLeft size={36} className="nav-arrow" />
+          </div>
+
+          <div className="fullscreen-stream-container">
+            <img
+              src={`/stream/${cameras[fullscreenCamIdx].id}`}
+              alt={cameras[fullscreenCamIdx].name}
+              className="fullscreen-stream-feed"
+              onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect fill="%23111827" width="640" height="360"/><text fill="%23475569" font-family="Inter" font-size="18" x="50%" y="50%" text-anchor="middle" dy=".3em">No Signal</text></svg>' }}
+            />
+            
+            <div className="fullscreen-stream-info">
+              <div className={`camera-status-dot ${(isArmed === false || cameras[fullscreenCamIdx].status === 'disabled') ? 'offline' : cameras[fullscreenCamIdx].status}`} />
+              <h3>Camera {fullscreenCamIdx + 1}: {cameras[fullscreenCamIdx].name}</h3>
+            </div>
+          </div>
+
+          <div className="fullscreen-nav-zone right" onClick={handleNextCamera} title="Next Camera (Right Arrow)">
+            <ChevronRight size={36} className="nav-arrow" />
+          </div>
+        </div>
+      )}
     </>
   )
 }
 
-function CameraCell({ camera, index, liveEvents, isArmed }) {
+function CameraCell({ camera, index, liveEvents, isArmed, onClick }) {
   const [alertLevel, setAlertLevel] = useState(null)
   const [camEnabled, setCamEnabled] = useState(camera.status !== 'disabled')
   const [toggling, setToggling] = useState(false)
@@ -304,7 +421,7 @@ function CameraCell({ camera, index, liveEvents, isArmed }) {
   const displayLabel = `Camera ${index} — ${camera.name}`
 
   return (
-    <div className={cellClass}>
+    <div className={cellClass} onClick={onClick} style={{ cursor: 'pointer' }}>
       {isOff ? (
         <div style={{
           width: '100%', height: '100%',
@@ -339,7 +456,10 @@ function CameraCell({ camera, index, liveEvents, isArmed }) {
           </div>
           {/* Per-camera power toggle — clickable even when stream is off */}
           <button
-            onClick={toggleCamera}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCamera();
+            }}
             disabled={toggling || isArmed === false}
             title={camEnabled ? 'Disable this camera' : 'Enable this camera'}
             style={{

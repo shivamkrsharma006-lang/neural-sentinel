@@ -386,3 +386,236 @@ tbody tr:last-child { border-bottom: none; }
   padding: 48px; color: var(--text3); gap: 12px;
 }
 .empty-state svg { opacity: 0.3; }
+
+/* ── Surveillance Mode & Fullscreen Carousel ─────────────────────────────────── */
+.surveillance-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.surveillance-overlay .camera-grid {
+  width: 100%;
+  height: 100%;
+  gap: 12px;
+}
+
+.surveillance-overlay .camera-cell {
+  aspect-ratio: auto !important;
+  height: 100% !important;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.surveillance-overlay .camera-grid.n1 { grid-template-rows: 1fr; grid-template-columns: 1fr; }
+.surveillance-overlay .camera-grid.n2 { grid-template-rows: 1fr; grid-template-columns: 1fr 1fr; }
+.surveillance-overlay .camera-grid.n3, .surveillance-overlay .camera-grid.n4 { grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; }
+
+.exit-surveillance-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(13, 18, 32, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 10000;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.surveillance-overlay:hover .exit-surveillance-btn {
+  opacity: 1;
+}
+
+.exit-surveillance-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Fullscreen Single Stream Overlay */
+.fullscreen-stream-overlay {
+  position: fixed;
+  inset: 0;
+  background: #05070c;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.25s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fullscreen-stream-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-stream-feed {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 10px 50px rgba(0,0,0,0.8);
+}
+
+.fullscreen-stream-info {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  background: rgba(13, 18, 32, 0.8);
+  backdrop-filter: blur(12px);
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+}
+
+.fullscreen-stream-info h3 {
+  font-size: 13px;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.fullscreen-close-btn {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  background: rgba(13, 18, 32, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10005;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.fullscreen-close-btn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  transform: scale(1.05);
+}
+
+/* Nav zones for hover cycle */
+.fullscreen-nav-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12%;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10003;
+  transition: background-color 0.2s;
+}
+
+.fullscreen-nav-zone.left {
+  left: 0;
+}
+.fullscreen-nav-zone.right {
+  right: 0;
+}
+
+.fullscreen-nav-zone:hover {
+  background: linear-gradient(to right, rgba(255,255,255,0.02) 0%, transparent 100%);
+}
+.fullscreen-nav-zone.right:hover {
+  background: linear-gradient(to left, rgba(255,255,255,0.02) 0%, transparent 100%);
+}
+
+.fullscreen-nav-zone .nav-arrow {
+  color: rgba(255, 255, 255, 0.15);
+  transition: all 0.2s;
+  background: rgba(13, 18, 32, 0.6);
+  border-radius: 50%;
+  padding: 8px;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.fullscreen-nav-zone:hover .nav-arrow {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.1);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+/* Hourly activity bar chart upgrades */
+.activity-bar-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+  border-bottom: 1px solid var(--border2);
+  padding-bottom: 4px;
+}
+
+.activity-bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.activity-bar::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -6px) scale(0.85);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.activity-bar:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -6px) scale(1);
+}
+
