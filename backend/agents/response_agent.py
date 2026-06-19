@@ -128,6 +128,14 @@ class ResponseAgent:
                 confidence=event.confidence,
                 frame_path=frame_path,
                 timestamp=datetime.utcnow(),
+                # V4 Metadata Pipeline fields
+                bbox_json=json.dumps([int(v) for v in event.bbox]) if event.bbox else "",
+                direction=event.direction,
+                speed_estimate=event.speed_estimate,
+                dominant_colors=json.dumps(event.dominant_colors) if event.dominant_colors else "",
+                object_details=event.object_details,
+                duration_seconds=event.duration_seconds,
+                fsm_state=event.fsm_state,
             )
             db.add(record)
             db.commit()
@@ -156,6 +164,12 @@ class ResponseAgent:
             "confidence": round(event.confidence, 3),
             # Always append Z so JS Date() knows it is UTC → correct local display
             "timestamp": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            # V4 Metadata
+            "direction": event.direction,
+            "speed_estimate": event.speed_estimate,
+            "duration_seconds": event.duration_seconds,
+            "fsm_state": event.fsm_state,
+            "dominant_colors": event.dominant_colors,
         })
         if _loop and not _loop.is_closed():
             asyncio.run_coroutine_threadsafe(_async_broadcast(message), _loop)

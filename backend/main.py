@@ -28,7 +28,7 @@ from database import create_tables, SessionLocal, Camera, Zone, EnrolledFace, Al
 from agents.detection_agent import detection_agent
 from agents.decision_agent import decision_agent
 from agents.response_agent import response_agent, set_event_loop
-from routers import auth, cameras, zones, events, faces, stream, alerts, system
+from routers import auth, cameras, zones, events, faces, stream, alerts, system, digest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -134,6 +134,7 @@ app.include_router(faces.router)
 app.include_router(alerts.router)
 app.include_router(stream.router)
 app.include_router(system.router)
+app.include_router(digest.router)
 
 # ── Serve evidence frames from disk (fallback for frames saved before restart) ───────
 app.mount("/frames", StaticFiles(directory=str(FRAMES_DIR)), name="frames")

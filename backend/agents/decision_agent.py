@@ -31,6 +31,7 @@ from utils.geometry import (
     compute_bottom_center, compute_centroid, is_armed, pixel_distance
 )
 from utils import face_utils
+from utils.color_utils import extract_dominant_colors, get_clothing_colors
 from config import (
     FACE_MATCH_THRESHOLD,
     THETA_ALERT,
@@ -118,6 +119,13 @@ class ViolationEvent:
     frame: np.ndarray
     bbox: List[float]
     timestamp: float = field(default_factory=time.time)
+    # ── V4 Metadata Pipeline fields ──────────────────────────────────────────
+    direction: str = ""
+    speed_estimate: str = ""
+    duration_seconds: float = 0.0
+    fsm_state: str = ""
+    dominant_colors: List[str] = field(default_factory=list)
+    object_details: str = "{}"
 
 
 class DecisionAgent:
@@ -452,6 +460,54 @@ class DecisionAgent:
             return
         state.last_event_time = now
 
+        # ── V4 Metadata: direction estimation ───────────────────────────────
+        direction = ""
+        speed_est = "stationary"
+        if state.prev_center:
+            current_center = tuple(det["center"])
+            dx = current_center[0] - state.prev_center[0]
+            dy = current_center[1] - state.prev_center[1]
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist < 3:
+                direction = "stationary"
+                speed_est = "stationary"
+            else:
+                if dist < 15:
+                    speed_est = "slow"
+                elif dist < 40:
+                    speed_est = "normal"
+                else:
+                    speed_est = "fast"
+                # Determine primary direction
+                if abs(dy) > abs(dx):
+                    direction = "entering" if dy > 0 else "exiting"
+                else:
+                    direction = "crossing"
+
+        # ── V4 Metadata: duration ──────────────────────────────────────
+        duration = now - state.first_entry_time if state.first_entry_time else 0.0
+
+        # ── V4 Metadata: dominant colors (lightweight, runs on existing crop) ──
+        colors = []
+        obj_details = {}
+        try:
+            colors = extract_dominant_colors(frame, det["bbox"], n_colors=2)
+            if det["class_name"] == "person":
+                clothing = get_clothing_colors(frame, det["bbox"])
+                obj_details = {
+                    "clothing_upper": clothing.get("upper", []),
+                    "clothing_lower": clothing.get("lower", []),
+                    "face_detected": state.face_checked,
+                    "match_confidence": round(state.auth_score, 3),
+                }
+            else:
+                obj_details = {
+                    "vehicle_type": det["class_name"],
+                    "color": colors[0] if colors else "",
+                }
+        except Exception as e:
+            logger.debug(f"Color extraction failed: {e}")
+
         event = ViolationEvent(
             camera_id=state.camera_id,
             zone_id=zone_id,
@@ -466,6 +522,12 @@ class DecisionAgent:
             violation_type=violation_type,
             frame=frame.copy(),
             bbox=det["bbox"],
+            direction=direction,
+            speed_estimate=speed_est,
+            duration_seconds=round(duration, 1),
+            fsm_state=state.fsm_state.value,
+            dominant_colors=colors,
+            object_details=json.dumps(obj_details),
         )
         for cb in self._violation_callbacks:
             try:

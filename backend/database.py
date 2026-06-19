@@ -71,6 +71,14 @@ class Event(Base):
     confidence = Column(Float, default=0.0)
     frame_path = Column(String, default="")
     timestamp = Column(DateTime, default=datetime.utcnow)
+    # ── V4 Metadata Pipeline — rich event attributes ─────────────────────────
+    bbox_json = Column(Text, default="")           # "[x1,y1,x2,y2]" bounding box
+    direction = Column(String, default="")          # entering, exiting, stationary, crossing
+    speed_estimate = Column(String, default="")     # stationary, slow, normal, fast
+    dominant_colors = Column(Text, default="")      # '["red","white"]' — top colors from crop
+    object_details = Column(Text, default="{}")     # JSON blob for type-specific data
+    duration_seconds = Column(Float, default=0.0)   # how long this object has been tracked
+    fsm_state = Column(String, default="")          # FSM state at time of event
     camera = relationship("Camera", back_populates="events")
     zone = relationship("Zone", back_populates="events")
 

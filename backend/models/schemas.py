@@ -81,6 +81,14 @@ class EventOut(BaseModel):
     confidence: float
     frame_path: Optional[str] = None
     timestamp: str  # UTC ISO string with Z suffix — JS parses correctly as UTC
+    # ── V4 Metadata Pipeline fields ──────────────────────────────────────────
+    bbox_json: Optional[str] = None
+    direction: Optional[str] = None
+    speed_estimate: Optional[str] = None
+    dominant_colors: Optional[str] = None
+    object_details: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    fsm_state: Optional[str] = None
 
     @classmethod
     def model_validate(cls, obj, **kwargs):
@@ -101,6 +109,14 @@ class EventOut(BaseModel):
             # Always append Z so JavaScript Date() knows it's UTC
             'timestamp': (obj.timestamp.strftime('%Y-%m-%dT%H:%M:%S') + 'Z')
                          if isinstance(obj.timestamp, datetime) else str(obj.timestamp) + 'Z',
+            # V4 metadata fields
+            'bbox_json': getattr(obj, 'bbox_json', None) or None,
+            'direction': getattr(obj, 'direction', None) or None,
+            'speed_estimate': getattr(obj, 'speed_estimate', None) or None,
+            'dominant_colors': getattr(obj, 'dominant_colors', None) or None,
+            'object_details': getattr(obj, 'object_details', None) or None,
+            'duration_seconds': getattr(obj, 'duration_seconds', None) or 0.0,
+            'fsm_state': getattr(obj, 'fsm_state', None) or None,
         }
         return cls(**data)
 
