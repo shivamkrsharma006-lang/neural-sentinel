@@ -1,0 +1,227 @@
+PATENT APPLICATION
+NEURAL SENTINEL
+A Multi-Agent Video Surveillance System with Closed-Loop Risk-Proportional Inference Scheduling,
+Post-Inference Metadata Deduplication with Causal Consistency,
+Non-Linear Temporal Risk Accumulation with Hysteresis-Protected State Preservation,
+and Multi-Frame Biometric Embedding Averaging for Continuous Severity Modulation
+Field: Computer Science  ·  Computer Vision  ·  Edge Computing  ·  Intelligent Surveillance Systems
+
+
+FIELD OF THE INVENTION
+[0001]  The present invention relates to the fields of computer science, computer vision, edge computing, and intelligent surveillance systems.
+[0002]  This invention pertains to a multi-agent AI system for real-time video-based intrusion detection and behavioral analysis, introducing: (i) a closed-loop risk-proportional CPU inference scheduler governed by a recurrence equation with composite control signal V(c,t) = max(Vbinary, Rmax); (ii) post-inference metadata deduplication with hardware-timestamped causal conflict resolution; (iii) a two-tiered detection confidence gate independently governing tracking continuity and alert escalation; (iv) a non-linear temporally-decaying logistic composite risk model with hysteresis-protected state preservation; and (v) multi-frame biometric embedding averaging for continuous severity-integral modulation — all on general-purpose CPU hardware.
+BACKGROUND
+[0003]  The background described herein is for contextual purposes only. No information provided constitutes an admission that it is prior art to the claimed invention.
+[0004]  Existing commercial surveillance platforms provide zone-based intrusion detection and facial recognition but require dedicated NVRs, GPU-equipped servers, and professional installation, constraining deployment in resource-limited environments.
+[0005]  Prior art in AI inference scheduling (e.g., US20220083389) assigns ML models to hardware resources using static priority scores derived from hardware capability metrics. Prior art does not disclose a scheduling recurrence whose control signal incorporates the maximum concurrently-computed logistic risk score across active THREAT-state tracked objects — a formulation that eliminates the inference starvation gap present in binary-only violation signals during extended entity dwell.
+[0006]  Prior art in virtual camera architectures (e.g., US 8,284,267) routes a single physical stream to multiple consumers by forking raw undecoded frame data at the capture layer. The present invention is architecturally distinct: AI inference executes exactly once, and only the resulting abstract per-object tracking metadata is forked to independent rule evaluators. Prior art does not address the causal consistency problem that arises when independent evaluators consuming shared metadata at different processing speeds produce contradictory threat states for the same tracked object identifier.
+[0007]  Prior art in composite risk scoring (e.g., US 11,756,339; US 7,956,890) combines identity and dwell-time signals via static binary threshold comparisons. Prior art does not disclose a continuously-accumulating temporally-decaying integral modulated by a time-varying biometric authorization tensor, nor hysteresis-protected preservation of accumulated severity against adversarial zone-boundary exit exploits.
+[0008]  Prior art does not disclose a two-tiered detection confidence architecture that separately configures tracking continuity threshold θ_track and alert escalation threshold θ_alert within the same behavioral state machine, such that tracking persists through partial occlusion at the lower threshold while THREAT transitions are suppressed until the higher threshold is satisfied. Existing systems apply a single confidence parameter to both functions, creating an unavoidable trade-off between tracking stability and false-positive suppression.
+[0009]  Prior art does not disclose multi-frame neural face embedding averaging — successive per-frame embedding vectors accumulated in a rolling window buffer, averaged element-wise, L2-normalized, and matched against enrolled identity vectors — applied as a continuous modulator of a severity integral rather than as a binary access gate.
+OBJECTS OF THE INVENTION
+[0010]  The primary objectives of the present disclosure are:
+
+	Risk-Proportional Closed-Loop Scheduler:  To implement an inference scheduler via U(c,t) = max(U_min, α·V(c,t) + β·U(c,t−1)·e^(−λΔt)), where V(c,t) = max(V_binary, R_max(c,t)) eliminates the inference starvation gap present in binary-only formulations, achieving O(1) AI model memory scaling.
+	Post-Inference Metadata Deduplication:  To introduce a deduplication architecture where each physical stream is AI-evaluated exactly once per cycle, with resulting metadata forked asynchronously via hardware-timestamped callbacks, stale-drop enforcement, and latest-timestamp-wins causal conflict resolution.
+	Two-Tiered Detection Confidence Gate:  To independently configure θ_track for tracking continuity and θ_alert > θ_track for alert escalation within the same behavioral state machine, eliminating the single-threshold tracking-stability/false-positive trade-off.
+	Non-Linear Temporal Risk Model with Hysteresis:  To implement the composite risk score R(id,t) over severity integral S(id,t) with a configurable hysteresis window H_seconds preserving accumulated S(id,t) and FSM state on zone exit, preventing adversarial severity-reset via momentary boundary exits.
+	Multi-Frame Biometric Embedding Averaging:  To implement a rolling-window face embedding accumulation mechanism with CLAHE preprocessing, Laplacian variance blur rejection, element-wise averaging, and L2 normalization — applied as a continuous modulator of S(id,t) via A(id,t), not as a binary access gate.
+	Operational Robustness:  To implement background model pre-warming eliminating cold-start biometric latency, and per-track event emission cooldown decoupling continuous S(id,t) computation from I/O dispatch frequency.
+SUMMARY OF THE INVENTION
+[0011]  Neural Sentinel is a browser-accessible multi-agent AI surveillance system comprising Detection Agent, Decision Agent, and Response Agent executing on a general-purpose CPU. The invention comprises five independently patentable technical contributions.
+
+First — Risk-Proportional Closed-Loop Inference Scheduler
+[0012]  The Detection Agent allocates CPU inference cycles across N camera streams via an urgency recurrence evaluated at each scheduling tick. The composite control signal V(c,t) combines a binary zone-crossing trigger with the maximum concurrently-computed logistic risk score of all THREAT-state tracked objects on camera c — eliminating the inference starvation gap present in binary-only schedulers. Stream selection uses normalized probabilistic weights.
+
+U_(c,t)^    =   max〖U_min^ ,   α·V_(c,t)^    +  β·U_(c,t-1)^ ·e^(-λ·Δt) 〗
+Eq. 1 — Urgency Recurrence
+V_(c,t)^    =   max〖V_binary^  (c,t) ,R_max^  (c,t)〗
+Eq. 2 — Composite Violation Signal
+w_c   =   (U(c,t))/(∑_c▒〖U(c,t)〗)
+Eq. 3 — Stream Selection Weights
+
+Second — Post-Inference Metadata Deduplication
+[0013]  When logical cameras share a physical stream, AI inference executes exactly once, yielding M = {track_id, class, confidence, bbox, center, hardware_timestamp}. M is dispatched asynchronously to N independent rule evaluators. Stale records are dropped. Contradictory threat states for the same track_id are resolved by the most recent hardware_timestamp. Technical effect: zero redundant inference per logical consumer with deterministic causal convergence.
+
+Third — Two-Tiered Confidence Gate and Five-State Behavioral Machine
+[0014]  Tier 1 (θ_track, e.g., 0.35): maintains Kalman-filter tracking continuity during partial occlusion; objects at Tier 1 cannot progress beyond PRESENT state. Tier 2 (θ_alert > θ_track, e.g., 0.55): hard precondition for THREAT transition and alert dispatch. The five-state machine (IDLE → ENTERING → PRESENT → LOITERING → THREAT) requires simultaneous zone occupancy, dwell-time threshold, and θ_alert for THREAT entry.
+
+Fourth — Non-Linear Temporal Risk Score with Hysteresis
+[0015]  Upon THREAT state entry, S(id,t) and R(id,t) are computed continuously at each scheduling tick. The negative exponent enforces temporal locality as an intentional adversarial-resistance design choice. Upon zone exit, H_seconds hysteresis preserves S(id,t) and FSM state, committing reset to IDLE only upon continuous absence exceeding H_seconds.
+
+S_(id,t)^    =  ∑_i▒〖C_i^  (id)·(1-A(id,t))·e^(-γ·(t-t_i)) 〗
+Eq. 4 — Severity Integral S(id, t)
+R_(id,t)^    =   1/(1+e^(-k·(S_(id,t)^ -0.5) ) )
+Eq. 5 — Composite Risk Score R(id, t)
+
+Fifth — Multi-Frame Biometric Embedding Averaging
+[0016]  The Decision Agent accumulates up to N_avg CLAHE-preprocessed, blur-validated face embedding vectors per tracked object in a rolling window, computes their element-wise arithmetic mean, L2-normalizes, and matches via cosine similarity. Upon match, A(id,t) = 1.0 causes immediate retroactive algebraic nullification of all accumulated severity via (1 − A(id,t)) = 0. Applied as a continuous risk modulator — not a binary access gate — this is architecturally distinct from all prior art biometric surveillance systems.
+DRAWINGS
+[0017]  The accompanying drawings form part of the specification.
+
+	Figure 1: Neural Sentinel Multi-Agent System Architecture — Five-Contribution Overview
+	Figure 2: U(c,t) Recurrence — Composite Control Signal, Inference Starvation Gap Elimination, and U_min Floor
+	Figure 3: Five-State Behavioral Machine with Two-Tiered Confidence Gate (θ_track / θ_alert) and Hysteresis Exit Sub-State
+	Figure 4: S(id,t) Severity Integral — Temporal Accumulation, Logistic R(id,t) Output, Hysteresis Window, and Instantaneous Biometric Collapse
+	Figure 5: Post-Inference Metadata Fan-Out — Single Model Invocation, Hardware Timestamp, Stale-Drop, Latest-Timestamp-Wins Conflict Resolution
+	Figure 6: Multi-Frame Embedding Pipeline — Rolling Window, CLAHE, Laplacian Blur Rejection, Averaging, L2 Normalization, A(id,t) Injection
+
+[0018]  Figure 1 illustrates the three-agent pipeline with all five contributions and their inter-agent data flows.
+[0019]  Figure 2 depicts V_binary spike at zone-crossing, R_max continuous floor during THREAT dwell, exponential decay curve, U_min floor, and the inference starvation gap present in binary-only formulations with its elimination illustrated.
+[0020]  Figure 3 shows all five behavioral states, the two independent confidence thresholds, and the hysteresis suspended-exit sub-state entered upon zone boundary departure.
+[0021]  Figure 4 plots S(id,t) growth for an unknown continuous entity, logistic R(id,t), the alert threshold, hysteresis preservation interval, and instantaneous S(id,t) collapse upon A(id,t) = 1.0.
+[0022]  Figure 5 illustrates: one physical frame read, one model invocation, hardware timestamp injection, asynchronous dispatch to N evaluators, stale-drop guard, and latest-timestamp-wins conflict resolution.
+[0023]  Figure 6 illustrates: CLAHE enhancement, Laplacian blur rejection, embedding computation, rolling window accumulation, averaging and L2 normalization, cosine similarity comparison, and A(id,t) injection.
+DETAILED DESCRIPTION OF THE INVENTION
+[0024]  The following detailed description enables any person skilled in the art to make and use the invention. Variations may be practiced without departing from the spirit of the invention.
+[0024a]  §101 Physical Integration Statement: The mathematical formulations herein are not abstract computations on generic data. The urgency recurrence U(c,t) is computed by a dedicated inference thread reading from hardware-connected camera frame buffers; its output directly modifies CPU scheduling weights governing which physical camera hardware is sampled at the next clock cycle. R_max(c,t) derives from live neural network inference on decoded pixel data from physical sensors. The severity integral S(id,t) is computed from neural network confidence scores derived from decoded pixel data at physical camera sensors; its logistic transformation R(id,t) directly triggers network packet transmission to external alert recipients and disk write operations to non-volatile storage. Each claimed method satisfies 35 U.S.C. §101 under Alice Step 2A Prong 2.
+A.  System Overview
+[0025]  Neural Sentinel comprises a Python-based backend and a React-based browser frontend, executing on general-purpose consumer CPU hardware without proprietary hardware, NVRs, or dedicated inference accelerators. Hardware-agnostic operation is a consequence of the algorithmic contributions and is not itself a claimed novelty.
+B.  Detection Agent — Risk-Proportional Closed-Loop Inference Scheduler
+[0026]  A critical unaddressed gap exists in binary-only violation schedulers: when a tracked object enters THREAT state and dwells continuously without re-triggering a zone-crossing event, V_binary(c,t) returns to 0 and urgency decays — reducing inference density on the most dangerous stream precisely when sustained monitoring is most needed. The present invention eliminates this gap via V(c,t) = max(V_binary(c,t), R_max(c,t)).
+[0027]  Each camera stream c is assigned a continuously updated urgency score:
+
+U_(c,t)^    =   max〖U_min^ ,   α·V_(c,t)^    +  β·U_(c,t-1)^ ·e^(-λ·Δt) 〗
+Eq. 1 — Urgency Recurrence
+V_(c,t)^    =   max〖V_binary^  (c,t) ,R_max^  (c,t)〗
+Eq. 2 — Composite Violation Signal
+
+V_binary(c,t) ∈ {0,1}:  Set to 1 when pixel-level motion analysis detects scene change exceeding threshold, or when the Decision Agent reports an active geometric zone violation on stream c based on semantic interpretation of tracked object state. Not derived solely from raw pixel differences.
+R_max(c,t) ∈ [0,1]:  The maximum logistic composite risk score R(id,t) across all THREAT-state tracked objects currently on camera c at the current tick. When no THREAT-state objects are present, R_max(c,t) = 0. The max() operator prevents inference allocation from decaying during extended entity dwell.
+α:  Immediate spike multiplier (e.g., 1.0). Upon V_binary = 1, U(c,t) immediately saturates.
+β:  Historical retention factor (e.g., 0.9). Controls urgency inertia after violation clears.
+λ:  Exponential decay constant (e.g., 2.0). Governs urgency decay rate during violation-free intervals.
+Δt:  Elapsed wall-clock time in seconds since preceding U(c,t) evaluation, measured via monotonic hardware clock.
+U_min:  Minimum urgency floor (e.g., 0.1). Guarantees all N streams receive baseline inference allocation, preventing adversarial exploitation of camera stillness.
+
+[0028]  Stream selection uses normalized probabilistic weights:
+w_c   =   (U(c,t))/(∑_c▒〖U(c,t)〗)
+Eq. 3 — Stream Selection Weights
+[0029]  The closed feedback loop: (i) zone violation or high R_max detected; (ii) V(c,t) set to violation magnitude; (iii) U(c,t) spikes or sustains; (iv) w_c elevates; (v) inference density increases; (vi) updated detection outputs refine R(id,t), feeding back into V(c,t) at the next tick.
+C.  Post-Inference Metadata Deduplication with Causal Conflict Resolution
+[0030]  When two or more logical camera identifiers share a physical hardware stream:
+	The physical camera buffer is read exactly once per scheduling cycle.
+	The shared AI model is invoked exactly once, producing M = {track_id, class_name, confidence, bbox, center, hardware_timestamp}, where hardware_timestamp is a monotonic CPU clock value injected at model output.
+	M is dispatched asynchronously to all registered rule evaluators via concurrent thread pool.
+	Each evaluator enforces stale-drop: if (current_time − M.hardware_timestamp) > Δt_max (e.g., 500 ms), M is discarded without influencing the behavioral state machine.
+	Contradictory threat states for the same track_id are resolved by accepting exclusively the state from the most recent hardware_timestamp, enforcing causal consistency.
+
+This architecture is distinct from prior art frame-level fan-out: the shared artifact is post-inference semantic metadata, not raw pixel data.
+D.  Decision Agent — Two-Tiered Confidence Gate
+[0031]  Tier 1 — Tracking Continuity (θ_track): Accepts detections for Kalman filter tracking continuity during partial occlusion and brief sensor artifacts. Objects at Tier 1 maintain their persistent track_id but cannot progress beyond PRESENT state. Tier 2 — Alert Escalation (θ_alert > θ_track): Required as a hard precondition for any THREAT state transition or alert dispatch, independently configurable. The technical effect: false-positive suppression from low-confidence environmental detections is achieved simultaneously with tracking identity stability — an outcome unachievable with a single shared threshold.
+E.  Decision Agent — Five-State Behavioral Machine with Hysteresis
+[0032]  For each tracked object on each logical camera, the Decision Agent maintains a five-state behavioral machine evaluated per scheduling tick:
+	IDLE → ENTERING:  Ray-casting point-in-polygon confirms tracked object center-of-mass enters configured polygonal zone boundary.
+	ENTERING → PRESENT:  Zone occupancy confirmed for minimum confirmation period T_confirm.
+	PRESENT → LOITERING:  Continuous dwell D(id) ≥ T_loiter for the specific zone.
+	LOITERING → THREAT:  D(id) ≥ T_threat AND detection confidence C > θ_alert at transition moment. Both conditions satisfied simultaneously.
+	THREAT/LOITERING/PRESENT → Hysteresis Sub-State:  Upon zone boundary departure, zone_exit_time is recorded. FSM state and accumulated S(id,t) are fully preserved. If re-entry occurs within H_seconds, all state and severity resume seamlessly. Only upon continuous absence exceeding H_seconds does FSM reset to IDLE and S(id,t) zero.
+
+[0033]  The hysteresis mechanism addresses an adversarial attack class: a monitored entity exploiting momentary zone exits to repeatedly reset accumulated severity and indefinitely prevent R(id,t) from reaching the alert threshold. The H_seconds grace window requires genuine sustained departure to clear accumulated risk and additionally spans 1–3 frame tracker dropout events.
+F.  Decision Agent — Behavioral Rule Graph
+[0034]  The behavioral rule graph is a parametric data structure editable via browser interface. Each Polygonal Zone is defined by user-drawn vertices in normalized frame coordinates, annotated with: object-class filter; temporal arming schedule (days of week, start/end times, server-side validated); dwell-time thresholds T_loiter and T_threat; and hysteresis interval H_seconds, independently configurable per zone.
+G.  Non-Linear Temporally-Decaying Severity Integral and Logistic Risk Score
+[0035]  Upon THREAT state entry, the Decision Agent begins continuous computation:
+
+S_(id,t)^    =  ∑_i▒〖C_i^  (id)·(1-A(id,t))·e^(-γ·(t-t_i)) 〗
+Eq. 4 — Severity Integral S(id, t)
+R_(id,t)^    =   1/(1+e^(-k·(S_(id,t)^ -0.5) ) )
+Eq. 5 — Composite Risk Score R(id, t)
+
+C_i(id):  Neural network detection confidence at observation i, derived from pixel-level analysis of decoded video frame from physical camera sensor.
+A(id,t):  Biometric authorization tensor, time-varying, re-evaluated at each CPU scheduling tick. A(id,t) = 1.0 upon cosine similarity match exceeding threshold; 0.0 for unknown entities.
+γ:  Temporal decay constant (e.g., 0.5). The negative exponent enforces temporal locality — past observations decay toward zero during extended absence, eliminating replay-style accumulation.
+k:  Logistic steepness parameter controlling sharpness of the alert threshold crossing.
+
+[0036]  Three mathematically distinct behavioral outcomes: (a) Unknown entity with sustained presence: S accumulates, driving R above R_threshold. (b) Verified enrolled entity A(id,t) = 1.0: every contribution algebraically zeros; no alert regardless of dwell. (c) Intermittently observed entity: S decays between intervals, requiring renewed sustained dwell to re-escalate R.
+[0037]  Upon A(id,t) transitioning to 1.0, S(id,t) is immediately reset to zero as the algebraic consequence of (1 − A(id,t)) = 0 propagating through every summation term — retroactive nullification of all prior accumulated contributions — causing R(id,t) to collapse below R_threshold within one scheduling tick without interrupting zone tracking or FSM state.
+H.  Multi-Frame Biometric Embedding Averaging
+[0038]  Rather than matching a single-frame facial embedding — statistically unreliable under motion blur, extended camera distance, or pose variation — the Decision Agent implements the following protocol during THREAT state evaluation:
+	At each throttle interval (e.g., 2 seconds), a localized facial image crop is extracted from the tracked bounding box.
+	CLAHE is applied on the luminance channel in YUV color space, followed by unsharp masking, recovering edge and texture detail from small or distant facial crops.
+	A Laplacian variance blur metric is computed. Crops below a configured sharpness threshold are discarded without appending to the buffer.
+	A neural face embedding vector is computed from the sharpness-validated crop. If non-zero, it is appended to the per-track rolling window buffer (capacity N_avg, e.g., 3).
+	When the buffer reaches N_avg embeddings, their element-wise arithmetic mean is computed and L2-normalized.
+	The averaged, normalized vector is compared via cosine similarity against all persisted enrolled identity vectors. Upon similarity exceeding threshold, A(id,t) = 1.0 and retroactive severity nullification is triggered. Otherwise, the oldest vector is removed and collection continues at the next throttle interval.
+
+[0039]  Blur and pose errors in individual frames cancel in averaged embedding space, enabling reliable identity determination at distances where single-frame embeddings are statistically unreliable. Applied as a continuous modulator of S(id,t) via A(id,t) — not a binary access gate — this is architecturally distinct from prior art biometric systems.
+I.  Biometric Risk Modulation via Self-Enrolled Authorization Vectors
+[0040]  End-users enroll their own identity via browser interface without administrator mediation. The backend extracts a high-dimensional face encoding vector and persists it to the authorization database. A(id,t) functions as a time-varying modulator injected continuously into S(id,t), suppressing risk accumulation for verified entities rather than issuing a binary access grant. Re-evaluation occurs at each throttle interval, enabling mid-tracking de-escalation when an initially occluded authorized entity's face subsequently becomes visible.
+J.  Inference Model Cold-Start Pre-Warming
+[0041]  A synthetic warm-up invocation — a call to the embedding model with a blank dummy image — executes in a background thread concurrent with camera stream initialization, forcing the deep learning framework to load and JIT-compile model weights before any live tracked entity requires biometric evaluation. Background thread execution does not block HTTP server readiness.
+K.  Per-Track Event Emission Cooldown
+[0042]  A per-track emission timestamp records the time of the most recent database write per tracked identifier. Database write and alert dispatch are suppressed when elapsed time since last emission is less than a configurable cooldown interval (e.g., 60 seconds). S(id,t) accumulation is not suppressed — it continues every frame, maintaining mathematical integrity of the severity integral independently of I/O dispatch frequency.
+L.  Response Agent — Forensic Logging and Alert Dispatch
+[0043]  Upon R(id,t) exceeding R_threshold, the Response Agent persists a Base64-encoded JPEG evidence frame to disk (dual-layer: in-memory LRU + disk-backed static files for restart survivability), logs a structured JSON audit record, and dispatches throttled multi-channel alerts (SMS, Telegram, Discord webhook) subject to the per-track emission cooldown.
+M.  Technology Stack
+[0044]  Validated implementation: Python 3.10+, FastAPI, Uvicorn ASGI; OpenCV 4.x; Ultralytics YOLOv8n; ByteTrack; ArcFace 512-dim via DeepFace; React.js; Python concurrent.futures.ThreadPoolExecutor. Any functionally equivalent object detection model, face embedding model, or asynchronous execution framework may be substituted. The inventive contribution resides exclusively in the scheduling algorithm, deduplication architecture, confidence gate, behavioral state machine with hysteresis, risk scoring model, biometric averaging method, pre-warming mechanism, and event cooldown architecture.
+ADVANTAGES OF THE INVENTION
+[0045]  The principal advantages of the present invention are:
+
+	Continuous Proportional Threat-Responsive Scheduling:  V(c,t) = max(V_binary, R_max) sustains inference allocation continuously proportional to live threat magnitude, eliminating the inference starvation gap during extended entity dwell.
+	Adversarial Hysteresis Protection:  The H_seconds grace window eliminates severity-reset via momentary boundary departures and provides continuity across 1–3 frame tracker dropout events.
+	Zero Redundant Inference Computation:  Post-inference metadata deduplication yields zero per-consumer overhead for logical cameras sharing a physical stream with deterministic causal consistency.
+	Dual False-Positive Suppression Without Tracking Degradation:  The two-tiered confidence gate simultaneously prevents false THREAT escalation and preserves tracking stability during partial occlusion — unachievable with a single shared threshold.
+	CPU-Viable Biometric Recognition Under Adverse Conditions:  Multi-frame embedding averaging enables reliable identity determination at extended distances and under motion blur where single-frame matching fails.
+	Sub-Tick Retroactive Biometric De-Escalation:  A(id,t) = 1.0 causes algebraic retroactive nullification of all accumulated severity within one scheduling tick without interrupting zone tracking or FSM state.
+	Adversarial Blind-Spot Resistance:  U_min guarantees all camera streams receive a minimum inference allocation regardless of sustained low-motion conditions.
+CLAIMS
+Independent Claims
+
+1.  Claim Set A —  A computer-implemented method for risk-proportional closed-loop inference scheduling in a multi-camera behavioral surveillance system executing on a general-purpose CPU, wherein binary-only violation signal schedulers produce an inference starvation gap by allowing urgency to decay even when a high-risk entity remains continuously present, the method comprising:
+(a)  maintaining N concurrent camera stream capture threads, each continuously writing decoded video frames to a thread-safe memory buffer accessible to a single sequential inference thread;
+(b)  computing, at each scheduling tick, for each camera stream c, a continuously updated urgency score U(c,t) = max(U_min, α·V(c,t) + β·U(c,t−1)·e^(−λ·Δt)), wherein V(c,t) = max(V_binary(c,t), R_max(c,t)); V_binary(c,t) ∈ {0,1} is derived from semantic interpretation of tracked object behavioral state including geometric zone membership and state machine transitions — not from raw pixel motion analysis alone; R_max(c,t) ∈ [0,1] is the maximum logistic composite risk score concurrently computed across all THREAT-state tracked objects on camera stream c; α is an immediate spike multiplier; β a historical retention factor; λ an exponential decay constant; Δt elapsed monotonic wall-clock time since the prior scheduling evaluation; and U_min a minimum fairness floor preventing adversarial blind-spot exploitation;
+U_(c,t)^    =   max〖U_min^ ,   α·V_(c,t)^    +  β·U_(c,t-1)^ ·e^(-λ·Δt) 〗
+V_(c,t)^    =   max〖V_binary^  (c,t) ,R_max^  (c,t)〗
+(c)  selecting, at each scheduling tick, a camera stream for neural network inference via probabilistic weighted selection using normalized urgency weights w_c = U(c,t) / Σ_c U(c,t), providing continuously proportional inference allocation to active-threat streams while guaranteeing U_min baseline to all streams;
+(d)  executing one shared neural network inference on the selected stream's decoded pixel data from a physical camera sensor, generating tracked object identifiers, bounding box coordinates, object class labels, detection confidence scores, and center-of-mass coordinates; and
+(e)  updating R_max(c,t) and V(c,t) at each subsequent scheduling tick from said detection outputs, such that U(c,t) is recursively influenced by live risk scores derived from physical sensor data;
+wherein steps (b)–(e) form a closed-loop control architecture wherein geometric zone violation or elevated R_max on stream c sets V(c,t); U(c,t) spikes or sustains accordingly; w_c elevates; inference density on stream c increases; updated detection outputs refine R(id,t); and R(id,t) feeds back into V(c,t) at the next tick — the technical effect being elimination of the inference starvation gap and continuous, proportional inference resource reallocation beyond binary zone-crossing moments.
+
+2.  Claim Set B —  A computer-implemented method for post-inference metadata deduplication with causal consistency enforcement in a multi-camera surveillance system, comprising:
+(a)  executing one shared neural network inference per scheduling cycle on a selected physical camera stream, producing tracking metadata record M = {track_id, class_name, confidence C, bbox, center, hardware_timestamp}, where hardware_timestamp is a monotonic CPU clock value injected at model output;
+(b)  when two or more logical camera identifiers share a physical stream, dispatching M asynchronously to independent rule evaluator instances via concurrent thread pool; enforcing stale-drop when (current_time − M.hardware_timestamp) exceeds configured maximum latency threshold Δt_max; and
+(c)  resolving contradictory threat-state classifications produced by different evaluator instances for the same track_id by accepting exclusively the threat state produced from the metadata record carrying the most recent hardware_timestamp, thereby enforcing causal consistency across asynchronous evaluators regardless of per-evaluator processing latency;
+the technical effect being zero redundant neural network inference computation per logical camera consumer and deterministic causal convergence across all asynchronous rule evaluator instances sharing a physical stream.
+
+3.  Claim Set C —  A computer-implemented method for two-tiered detection confidence gating and hysteresis-protected behavioral state evaluation in a real-time video surveillance system, wherein single-threshold detection confidence architectures create an unavoidable trade-off between tracking stability and false-positive alert suppression, the method comprising:
+(a)  maintaining, per tracked object on each logical camera, a five-state behavioral state machine (IDLE, ENTERING, PRESENT, LOITERING, THREAT) gated by a two-tiered confidence filter: Tier 1 at θ_track accepting detections for Kalman-filter tracking continuity through partial occlusion, with objects satisfying θ_track but not θ_alert maintaining their persistent track identifier but unable to progress beyond PRESENT state; Tier 2 requiring detection confidence C > θ_alert, where θ_alert > θ_track, as a hard precondition for THREAT state transition and alert dispatch — the two thresholds independently configurable within the same behavioral state machine;
+(b)  evaluating geometric zone membership at each scheduling tick via ray-casting point-in-polygon on the tracked object's center-of-mass against user-defined parametric polygonal zones annotated with object-class filters, temporal arming schedules, and independently configurable dwell-time thresholds T_loiter and T_threat;
+(c)  upon the tracked object's center-of-mass departing a zone polygon boundary, recording zone_exit_time and entering a suspended-exit sub-state: preserving the accumulated severity integral S(id,t) and current FSM state throughout; resuming all preserved state seamlessly upon zone re-entry within configurable hysteresis interval H_seconds; and committing FSM reset to IDLE and S(id,t) zeroing only upon continuous absence exceeding H_seconds; and
+(d)  independently configuring H_seconds per polygonal zone, enabling high-sensitivity zones to apply shorter grace windows than general monitoring zones;
+the technical effect being: (i) simultaneous occlusion-tolerant object tracking and false-positive-suppressed THREAT escalation without the degradation trade-off of single-threshold systems; and (ii) prevention of adversarial severity-reset via momentary boundary exits and preservation of accumulated risk across tracker dropout events.
+
+4.  Claim Set D —  A computer-implemented method for non-linear temporal risk accumulation with biometric modulation in a real-time video surveillance decision pipeline, comprising:
+(a)  computing, upon THREAT state entry and continuously at each subsequent scheduling tick, a severity integral S(id,t) and composite risk score R(id,t):
+S_(id,t)^    =  ∑_i▒〖C_i^  (id)·(1-A(id,t))·e^(-γ·(t-t_i)) 〗
+R_(id,t)^    =   1/(1+e^(-k·(S_(id,t)^ -0.5) ) )
+wherein C_i(id) is the neural network detection confidence at observation i derived from decoded pixel data of a physical camera sensor; A(id,t) is a biometric authorization tensor re-evaluated at each scheduling tick; γ is a temporal decay constant; k a logistic steepness parameter; and the negative exponent e^(−γ·(t−t_i)) is an intentional adversarial-resistance design choice enforcing temporal locality such that sustained continuous entity presence is required to drive R above the alert threshold;
+(b)  upon A(id,t) transitioning to 1.0 at any scheduling tick, immediately resetting S(id,t) to zero as the algebraic consequence of (1 − A(id,t)) = 0 propagating through every summation term — constituting retroactive nullification of all prior accumulated contributions regardless of historical timestamps — causing R(id,t) to collapse below R_threshold within one scheduling tick without interrupting geometric zone tracking or FSM state; resuming severity accumulation from zero if A(id,t) subsequently returns to 0.0;
+(c)  recomputing R(id,t) at each CPU scheduling tick from live sensor-derived inputs, wherein R(id,t) directly governs physical hardware actions including alert network packet transmission and evidence frame write to non-volatile storage; and
+(d)  maintaining, per tracked object, a per-track emission timestamp; suppressing database write and alert dispatch when elapsed time since last emission is less than a configured minimum cooldown interval; while S(id,t) accumulation continues uninterrupted at every scheduling tick, maintaining continuous mathematical integrity of the composite risk score independently of I/O dispatch frequency.
+
+5.  Claim Set E —  The method of claim 4, further comprising biometric risk modulation via multi-frame neural embedding averaging:
+(a)  accepting biometric identity enrollment directly from end-users via a browser interface without administrator mediation; extracting neural face embedding vectors from submitted facial images; and persisting said vectors to an authorization database;
+(b)  at each throttle interval during active THREAT state evaluation for a tracked object, extracting a localized facial image crop from the tracked bounding box; applying Contrast Limited Adaptive Histogram Equalization (CLAHE) on the luminance channel in YUV color space followed by unsharp masking; and computing Laplacian variance on the enhanced crop, discarding said crop if the variance falls below a configured sharpness threshold;
+(c)  computing a neural face embedding vector from each sharpness-validated enhanced crop; appending non-zero embedding vectors to a per-track rolling window buffer of capacity N_avg; upon buffer reaching N_avg vectors, computing their element-wise arithmetic mean and L2-normalizing the result; and computing cosine similarity between the averaged normalized vector and all persisted enrolled identity vectors;
+(d)  upon cosine similarity exceeding a configured match threshold, setting biometric authorization tensor A(id,t) = 1.0 for said tracked object, whereupon the factor (1 − A(id,t)) = 0 propagates through every summation term of S(id,t) = Σ_i C_i(id)·(1−A(id,t))·e^(−γ·(t−t_i)), immediately resetting the accumulated severity integral to zero and causing R(id,t) to collapse below R_threshold within one scheduling tick without interrupting geometric zone tracking or FSM state; upon similarity falling below threshold, removing the oldest buffer vector and continuing rolling accumulation at the next throttle interval;
+(e)  re-evaluating biometric matching at each subsequent throttle interval, enabling mid-tracking de-escalation when an initially occluded authorized entity's face subsequently becomes visible; and
+(f)  executing, during system initialization and concurrently with camera stream initialization, a synthetic inference invocation of the face embedding model on a blank dummy image in a background thread, forcing deep learning framework weight loading and JIT compilation before any live tracked entity requires biometric evaluation, without blocking HTTP server readiness;
+the technical effect being adversarial noise cancellation enabling reliable identity determination at extended camera distances and under motion blur conditions where single-frame embeddings are statistically unreliable, applied as a continuous modulator of S(id,t) rather than as a binary access gate.
+
+Dependent Claims
+
+6.  The method of claim 1, wherein V_binary's pixel-level motion component is computed as the count of non-zero pixels in a thresholded per-pixel absolute-difference map against a Gaussian-blurred grayscale reference frame; V_binary set to 0 when said count falls below a minimum motion threshold, permitting U(c,t) to decay toward U_min and enabling inference skip for static scenes while reusing the prior metadata record for tracking continuity.
+7.  The method of claim 1, wherein α, β, λ, and U_min are independently configurable per camera stream identifier, enabling asymmetric urgency decay profiles for streams designated as high-sensitivity versus general monitoring.
+8.  The method of claim 1, wherein each camera capture thread implements exponential-backoff reconnection upon hardware connection failure, doubling retry intervals up to a configured maximum, preventing log flooding from intermittently offline camera hardware.
+9.  The method of claim 2, wherein each polygonal zone carries a temporal arming schedule specifying active days-of-week, start time, and end time enforced by server-side datetime validation; the behavioral rule evaluator suppresses all FSM transitions for zones outside their defined active temporal window without interrupting inference scheduling or tracking continuity for active zones.
+10.  The method of claim 3, wherein LOITERING state entry requires the tracked object's continuous chronological dwell duration D(id), measured from initial zone-entry timestamp, to satisfy D(id) ≥ T_loiter; and THREAT state transition requires D(id) ≥ T_threat simultaneously with C > θ_alert — both temporal and confidence preconditions satisfied concurrently before composite risk computation begins.
+11.  The method of claim 4, wherein the logistic steepness parameter k and temporal decay constant γ are configurable per polygonal zone, enabling zone-specific risk accumulation profiles within the same multi-camera behavioral system.
+12.  The method of claim 4, wherein the per-track emission cooldown interval is independently configurable per polygonal zone, enabling high-priority zones to dispatch alerts at higher frequency while preserving continuous S(id,t) mathematical integrity across all zones.
+13.  The method of claim 5, wherein the rolling window strictly removes the oldest vector before each new append upon reaching N_avg without achieving threshold similarity, ensuring the averaged embedding continuously reflects the N_avg most recent sharpness-validated observations and does not retain stale embeddings from earlier in the zone visit.
+14.  The method of claim 5, wherein the unsharp masking step comprises computing a Gaussian-blurred version of the CLAHE-enhanced luminance channel with a configurable kernel size and subtracting it from the enhanced image with a configurable weight parameter, recovering high-frequency texture detail from small or distant facial crops prior to neural embedding computation.
+
+ABSTRACT
+Neural Sentinel is a multi-agent AI surveillance system executing on a general-purpose CPU. Five technical contributions are claimed: (1) a closed-loop risk-proportional inference scheduler via U(c,t) = max(U_min, α·V(c,t) + β·U(c,t−1)·e^(−λΔt)) where V(c,t) = max(V_binary, R_max) eliminates the inference starvation gap present in binary-only schedulers; (2) post-inference metadata deduplication with hardware-timestamped causal conflict resolution ensuring zero redundant inference per logical consumer; (3) a two-tiered confidence gate independently configuring θ_track and θ_alert > θ_track within the same behavioral state machine, eliminating the single-threshold tracking-stability/false-positive trade-off; (4) a logistic composite risk score over temporally-decaying severity integral S(id,t) = Σ_i C_i·(1−A(id,t))·e^(−γ·(t−t_i)) with hysteresis-protected FSM state preservation and retroactive algebraic severity nullification upon biometric match; and (5) multi-frame biometric embedding averaging — CLAHE-preprocessed, blur-validated, L2-normalized — applied as a continuous modulator of S(id,t), not a binary access gate. Each method is integrated into a physical sensor-data signal-processing loop satisfying 35 U.S.C. §101 under Alice Step 2A Prong 2.
+
+— END OF PATENT APPLICATION —
