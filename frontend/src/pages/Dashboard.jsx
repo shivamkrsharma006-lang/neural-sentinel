@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [cameras, setCameras] = useState([])
   const [events, setEvents] = useState([])
   const [stats, setStats] = useState({ total: 0, critical: 0, high: 0, cameras_online: 0 })
+  const [v4Stats, setV4Stats] = useState(null)
   const [liveEvents, setLiveEvents] = useState([])
   const [isArmed, setIsArmed] = useState(null)
   const [sysLoading, setSysLoading] = useState(false)
@@ -51,14 +52,17 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [camRes, evtRes, sysRes] = await Promise.all([
+      const today = new Date().toISOString().slice(0, 10)
+      const [camRes, evtRes, sysRes, statsRes] = await Promise.all([
         api.get('/cameras'),
         api.get('/events?limit=50'),
-        api.get('/system/status')
+        api.get('/system/status'),
+        api.get('/events/stats', { params: { date_from: today } }).catch(() => ({ data: null })),
       ])
       setCameras(camRes.data)
       setEvents(evtRes.data)
       setIsArmed(sysRes.data.armed)
+      if (statsRes.data) setV4Stats(statsRes.data)
       const evts = evtRes.data
       setStats({
         total: evts.length,
@@ -157,6 +161,64 @@ export default function Dashboard() {
             <div className="stat-value success">{stats.cameras_online}/{cameras.length}</div>
           </div>
         </div>
+
+        {/* V4 Enhanced Stats Row */}
+        {v4Stats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-label" style={{ fontSize: 11 }}>Persons Today</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)' }}>{v4Stats.total_persons}</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>{v4Stats.known_persons} known / {v4Stats.unknown_persons} unknown</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-label" style={{ fontSize: 11 }}>Vehicles Today</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--info, #4cc9f0)' }}>{v4Stats.total_vehicles}</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-label" style={{ fontSize: 11 }}>Alerts Today</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--danger)' }}>{v4Stats.alerts_triggered}</div>
+            </div>
+            <div className="stat-card" style={{ padding: '12px 14px' }}>
+              <div className="stat-label" style={{ fontSize: 11 }}>Peak Activity</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--warning)' }}>{v4Stats.peak_hour ? `${v4Stats.peak_hour}:00` : '—'}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Hourly Activity Bar Chart */}
+        {v4Stats?.hourly_activity && (
+          <div className="card" style={{ marginBottom: 16, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--text2)' }}>Today's Activity</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }}>
+              {Object.entries(v4Stats.hourly_activity).map(([hour, count]) => {
+                const maxVal = Math.max(1, ...Object.values(v4Stats.hourly_activity))
+                const pct = (count / maxVal) * 100
+                const isNow = parseInt(hour) === new Date().getHours()
+                return (
+                  <div
+                    key={hour}
+                    title={`${hour}:00 — ${count} events`}
+                    style={{
+                      flex: 1,
+                      height: `${Math.max(2, pct)}%`,
+                      background: isNow ? 'var(--primary)' : count > 0 ? 'var(--primary-dim, rgba(99,102,241,0.3))' : 'var(--bg3, rgba(255,255,255,0.05))',
+                      borderRadius: '2px 2px 0 0',
+                      transition: 'height .3s',
+                      cursor: 'default',
+                    }}
+                  />
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>00</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>06</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>12</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>18</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>23</span>
+            </div>
+          </div>
+        )}
 
         {/* Camera Grid + Live Events */}
         <div style={{ display: 'grid', gridTemplateColumns: cameras.length > 0 ? '1fr 340px' : '1fr', gap: 16, alignItems: 'start' }}>

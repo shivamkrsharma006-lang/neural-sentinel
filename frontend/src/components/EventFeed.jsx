@@ -53,7 +53,20 @@ export default function EventFeed({ events = [] }) {
               <div className="event-detail" style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {camLabel}{zonePart}
                 {objPart ? ` · ${objPart}` : ''}
+                {evt.direction && evt.direction !== 'stationary' ? ` · ${evt.direction}` : ''}
                 {typeof evt.risk_score === 'number' ? ` · R=${evt.risk_score.toFixed(2)}` : ''}
+                {/* V4 color dots */}
+                {evt.dominant_colors && Array.isArray(evt.dominant_colors) && evt.dominant_colors.length > 0 && (
+                  <span style={{ marginLeft: 4, display: 'inline-flex', gap: 2, verticalAlign: 'middle' }}>
+                    {evt.dominant_colors.slice(0, 2).map((c, ci) => (
+                      <span key={ci} style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: c === 'navy' ? '#001f3f' : c,
+                        display: 'inline-block', border: '1px solid rgba(255,255,255,0.15)'
+                      }} />
+                    ))}
+                  </span>
+                )}
               </div>
             </div>
             <div className="event-time" style={{ flexShrink: 0, fontSize: 10, color: 'var(--text3)' }}>
