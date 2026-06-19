@@ -1,0 +1,35 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/agents/__pycache__/
+backend/routers/__pycache__/
+backend/models/__pycache__/
+backend/utils/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Database (local dev data)
+backend/neural_sentinel.db
+data/
+
+# Environment
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# YOLO model weights (large binary)
+backend/*.pt
+
+# Frames (generated at runtime)
+data/frames/
