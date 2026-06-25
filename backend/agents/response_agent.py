@@ -81,6 +81,18 @@ class ResponseAgent:
 
     def _process(self, event: ViolationEvent):
         try:
+            # ── V4 Local Vision Summarization ──
+            if event.object_class == "person":
+                try:
+                    from agents.local_vision_agent import describe_activity_locally
+                    summary = describe_activity_locally(event.frame)
+                    if summary:
+                        details = json.loads(event.object_details)
+                        details["action_summary"] = summary
+                        event.object_details = json.dumps(details)
+                except Exception:
+                    pass
+
             frame_path = self._save_frame(event)
             event_record = self._save_event(event, frame_path)
             self._broadcast_ws(event, frame_path)
@@ -120,6 +132,7 @@ class ResponseAgent:
             record = DBEvent(
                 camera_id=event.camera_id,
                 zone_id=event.zone_id,
+                track_id=event.track_id,
                 event_type=event.violation_type,
                 risk_score=event.risk_score,
                 risk_level=event.risk_level,

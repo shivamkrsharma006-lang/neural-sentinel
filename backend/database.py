@@ -72,6 +72,7 @@ class Event(Base):
     frame_path = Column(String, default="")
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     # ── V4 Metadata Pipeline — rich event attributes ─────────────────────────
+    track_id = Column(Integer, nullable=True)
     bbox_json = Column(Text, default="")           # "[x1,y1,x2,y2]" bounding box
     direction = Column(String, default="")          # entering, exiting, stationary, crossing
     speed_estimate = Column(String, default="")     # stationary, slow, normal, fast
@@ -97,6 +98,10 @@ def create_tables():
     Base.metadata.create_all(bind=engine)
     from sqlalchemy import text
     with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE events ADD COLUMN track_id INTEGER"))
+        except Exception:
+            pass  # already exists
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_camera_id ON events (camera_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_risk_level ON events (risk_level)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_object_class ON events (object_class)"))

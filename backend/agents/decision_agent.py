@@ -375,13 +375,10 @@ class DecisionAgent:
         3. Compute logistic risk: R = 1 / (1 + e^(−k·(S−0.5)))
         4. If R ≥ R_threshold → dispatch event.
         """
-        # ── Step 1: Multi-frame biometric check → A(id) ──────────────────────
-        # Strategy: collect up to 3 embeddings (one per 2s interval) then match
-        # the AVERAGED embedding. Averaging cancels blur/pose noise in individual
-        # frames, dramatically improving recognition at 2m+ or in low light.
-        MAX_EMBED_SAMPLES = 3
+        # ── Step 1: Instant biometric check & Verification Lock ─────────────────
         if not state.face_checked and face_utils.is_available() and self._enrolled_faces:
-            if now - state.last_face_check_time > 2.0:
+            # check at most once per 0.5 seconds to save CPU cycles
+            if now - state.last_face_check_time > 0.5:
                 state.last_face_check_time = now
                 bbox = det["bbox"]
                 x1, y1, x2, y2 = [int(v) for v in bbox]
@@ -392,27 +389,11 @@ class DecisionAgent:
                 if face_crop.size > 0:
                     emb = face_utils.extract_embedding(face_crop)
                     if emb is not None:
-                        state.embedding_buffer.append(emb)
-                        state.face_check_count += 1
-                        logger.debug(
-                            f"[FACE] Track {state.track_id}: "
-                            f"sample {state.face_check_count}/{MAX_EMBED_SAMPLES} collected"
-                        )
-
-                    # Match once we have enough samples
-                    if len(state.embedding_buffer) >= MAX_EMBED_SAMPLES:
-                        # Average all collected embeddings — much more stable than single-frame
-                        avg_emb = np.mean(state.embedding_buffer, axis=0).astype(np.float32)
-                        # L2-normalise (ArcFace expects unit vectors for cosine similarity)
-                        norm = np.linalg.norm(avg_emb)
-                        if norm > 1e-6:
-                            avg_emb /= norm
                         name, sim = face_utils.match_face(
-                            avg_emb, self._enrolled_faces, FACE_MATCH_THRESHOLD
+                            emb, self._enrolled_faces, FACE_MATCH_THRESHOLD
                         )
                         logger.info(
-                            f"[FACE] Track {state.track_id}: "
-                            f"avg of {len(state.embedding_buffer)} embeddings → "
+                            f"[FACE] Track {state.track_id}: check → "
                             f"'{name or 'UNKNOWN'}' (sim={sim:.3f})"
                         )
                         if name:
@@ -420,13 +401,12 @@ class DecisionAgent:
                             state.auth_score = sim
                             state.A_id = 1.0
                             state.severity_sum = 0.0
-                            state.face_checked = True  # confirmed, stop collecting
+                            state.face_checked = True  # Locked!
+                            self._retroactive_log_correction(state.camera_id, state.track_id, name)
                         else:
                             state.identity = "UNKNOWN"
                             state.auth_score = 0.0
                             state.A_id = 0.0
-                            # Rolling window: drop oldest, keep collecting
-                            state.embedding_buffer.pop(0)
 
 
         # ── Step 2: Accumulate S(id,t) = Σ C_i·(1−A_id)·e^(−γ·(t−t_i)) ───────────
@@ -501,12 +481,25 @@ class DecisionAgent:
                     "match_confidence": round(state.auth_score, 3),
                 }
             else:
+                plate_text = ""
+                if det["class_name"] in ("car", "truck", "motorcycle", "bus"):
+                    bbox = det["bbox"]
+                    x1, y1, x2, y2 = [int(v) for v in bbox]
+                    h, w = frame.shape[:2]
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    vehicle_crop = frame[y1:y2, x1:x2]
+                    if vehicle_crop.size > 0:
+                        from utils import lpr_utils
+                        plate_text = lpr_utils.read_license_plate(vehicle_crop) or ""
+                
                 obj_details = {
                     "vehicle_type": det["class_name"],
                     "color": colors[0] if colors else "",
+                    "license_plate": plate_text,
                 }
         except Exception as e:
-            logger.debug(f"Color extraction failed: {e}")
+            logger.debug(f"Color/LPR extraction failed: {e}")
 
         event = ViolationEvent(
             camera_id=state.camera_id,
@@ -534,6 +527,40 @@ class DecisionAgent:
                 cb(event)
             except Exception as e:
                 logger.error(f"Decision callback error: {e}")
+
+    def _retroactive_log_correction(self, camera_id: int, track_id: int, identity: str):
+        """
+        Retroactively updates historical events for the same track within the database.
+        Sets identity to verified name, and resolves risk score/level to low.
+        """
+        def _update():
+            from database import SessionLocal, Event
+            from datetime import datetime, timedelta
+            db = SessionLocal()
+            try:
+                # Find all events in the last 15 minutes for this track/camera that are UNKNOWN
+                cutoff = datetime.utcnow() - timedelta(minutes=15)
+                events = db.query(Event).filter(
+                    Event.camera_id == camera_id,
+                    Event.track_id == track_id,
+                    Event.identity == "UNKNOWN",
+                    Event.timestamp >= cutoff
+                ).all()
+                
+                if events:
+                    for e in events:
+                        e.identity = identity
+                        e.risk_score = 0.0
+                        e.risk_level = "LOW"
+                    db.commit()
+                    logger.info(f"[LOG CORRECTION] Retroactively corrected {len(events)} events for track {track_id} -> '{identity}'")
+            except Exception as e:
+                logger.error(f"Error during log correction: {e}")
+            finally:
+                db.close()
+                
+        import threading
+        threading.Thread(target=_update, daemon=True, name=f"log-correct-{track_id}").start()
 
 
 # ── Global singleton ──────────────────────────────────────────────────────────
