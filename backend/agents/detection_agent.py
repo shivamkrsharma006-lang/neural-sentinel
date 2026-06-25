@@ -500,23 +500,14 @@ class DetectionAgent:
             # ── Motion Gating (V2) ────────────────────────────────────────
             # Run pixel-motion analysis. If no motion and urgency is low,
             # skip the heavy model invocation and reuse previous metadata.
-            #
-            # CRITICAL: NEVER skip inference when there are active detections
-            # in the scene (someone is visible). Skipping YOLO's model.track()
-            # breaks ByteTrack's temporal continuity — when inference resumes,
-            # ByteTrack assigns NEW track_ids, causing verified identities to
-            # be lost and users to be re-flagged as threats.
+            # Note: ByteTrack track ID changes from skipped frames are now
+            # handled by the verified identity cache in DecisionAgent.
             urgency = self._scheduler.get_score(camera_id)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
             has_motion = True
-            with self._results_lock:
-                prev = self._results.get(camera_id)
-            prev_has_detections = prev and len(prev.detections) > 0
-
-            if not prev_has_detections and urgency < 0.5 and primary_id in self._prev_gray:
-                # Only consider skipping when the scene is EMPTY (no tracked objects)
+            if urgency < 0.5 and primary_id in self._prev_gray:
                 diff = cv2.absdiff(self._prev_gray[primary_id], gray)
                 thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)[1]
                 if cv2.countNonZero(thresh) < 500:
@@ -525,6 +516,8 @@ class DetectionAgent:
             self._prev_gray[primary_id] = gray
 
             if not has_motion:
+                with self._results_lock:
+                    prev = self._results.get(camera_id)
                 detections = prev.detections if prev else []
             else:
                 detections = self._run_inference(frame)
