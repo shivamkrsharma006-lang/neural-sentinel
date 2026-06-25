@@ -42,6 +42,14 @@ def _startup_sync():
     create_tables()
     logger.info("Database tables ready")
 
+    # Run biometric database migration to ONNX ArcFace
+    try:
+        from utils.migrate_biometrics import run_migration
+        run_migration()
+    except Exception as e:
+        logger.error(f"Startup biometric migration failed: {e}")
+
+
     # Wire agent pipeline: detection → decision → response
     detection_agent.register_callback(decision_agent.process)
     decision_agent.register_callback(response_agent.handle_violation)
