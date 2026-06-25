@@ -7,6 +7,8 @@ import ZoneEditor from './pages/ZoneEditor'
 import Events from './pages/Events'
 import Enroll from './pages/Enroll'
 import Settings from './pages/Settings'
+import Summary from './pages/Summary'
+import Monitor from './pages/Monitor'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }) {
@@ -27,6 +29,8 @@ export default function App() {
           <Route path="events" element={<Events />} />
           <Route path="enroll" element={<Enroll />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="summary" element={<Summary />} />
+          <Route path="monitor" element={<Monitor />} />
         </Route>
       </Routes>
     </BrowserRouter>

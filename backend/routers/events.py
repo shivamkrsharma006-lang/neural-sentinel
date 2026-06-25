@@ -211,8 +211,14 @@ def get_event_frame(
     if jpeg:
         return Response(content=jpeg, media_type="image/jpeg")
 
-    # 2. Redirect to static file (always written to disk at capture time)
-    return RedirectResponse(url=f"/frames/{event.frame_path}.jpg")
+    # 2. Serve from disk directly (fully authenticated, no redirect)
+    from config import FRAMES_DIR
+    from fastapi.responses import FileResponse
+    path = FRAMES_DIR / f"{event.frame_path}.jpg"
+    if path.exists():
+        return FileResponse(str(path))
+
+    raise HTTPException(404, "Frame file not found on disk")
 
 
 @router.get("/{event_id}/frame/save")
@@ -222,7 +228,7 @@ def save_event_frame(
     db: Session = Depends(get_db)
 ):
     """
-    Download the evidence frame as a JPEG file.
+    Download the evidence frame as a JPEG file (authenticated).
     """
     from auth import decode_token
     payload = decode_token(token)
@@ -235,16 +241,26 @@ def save_event_frame(
     if not event or not event.frame_path:
         raise HTTPException(404, "Frame not available")
 
+    # Try cache, then disk fallback
     from agents.detection_agent import get_evidence_frame
     jpeg = get_evidence_frame(event.frame_path)
     if not jpeg:
-        raise HTTPException(404, "Frame expired. Only available during the current session.")
+        from config import FRAMES_DIR
+        path = FRAMES_DIR / f"{event.frame_path}.jpg"
+        if path.exists():
+            try:
+                with open(str(path), 'rb') as f:
+                    jpeg = f.read()
+            except Exception:
+                pass
+    if not jpeg:
+        raise HTTPException(404, "Frame expired or not found on disk")
 
     filename = f"sentinel_event_{event_id}_{event.event_type}.jpg"
     return Response(
         content=jpeg,
         media_type="image/jpeg",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 

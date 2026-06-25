@@ -21,6 +21,8 @@ import logging
 from collections import OrderedDict
 from typing import Dict, Optional, Callable, List
 from dataclasses import dataclass, field
+import torch
+torch.set_num_threads(4)
 from ultralytics import YOLO
 from config import (
     YOLO_MODEL, THETA_TRACK,
@@ -105,6 +107,7 @@ class CameraCapture:
         self.status = "connecting"
         self.width = 640
         self.height = 480
+        self.last_updated = 0.0
 
     def start(self):
         if self._running or self._disabled:
@@ -219,6 +222,7 @@ class CameraCapture:
                 fail_count = 0
                 with self._lock:
                     self._frame = frame
+                    self.last_updated = time.monotonic()
             if not self._running or self._disabled:
                 return
             time.sleep(retry_delay)
@@ -450,6 +454,11 @@ class DetectionAgent:
         primary_id = self._source_aliases.get(camera_id, camera_id)
         cap = self._captures.get(primary_id)
         return cap.get_frame() if cap else None
+
+    def get_snapshot_timestamp(self, camera_id: int) -> float:
+        primary_id = self._source_aliases.get(camera_id, camera_id)
+        cap = self._captures.get(primary_id)
+        return cap.last_updated if cap else 0.0
 
     def get_result(self, camera_id: int) -> Optional[DetectionResult]:
         with self._results_lock:

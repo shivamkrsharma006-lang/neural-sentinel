@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import toast from 'react-hot-toast'
 import { Camera, Plus, Trash2, Edit3, Wifi, WifiOff, Settings, X, Check } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
 
 export default function Cameras() {
+  const token = useAuthStore((s) => s.token)
   const [cameras, setCameras] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   const [editCam, setEditCam] = useState(null)  // {id, name, source} or null
@@ -103,7 +105,7 @@ export default function Cameras() {
             <div key={cam.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Thumbnail */}
               <div style={{ width: 160, height: 90, background: '#000', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
-                <img src={`/stream/${cam.id}`} alt={cam.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={`/stream/${cam.id}?token=${token}`} alt={cam.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -3,11 +3,12 @@ import json
 import time
 import cv2
 import numpy as np
+import threading
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from database import get_db, Camera, User
-from auth import get_current_user, decode_token
+from auth import get_current_user, decode_token, get_current_user_from_header_or_query
 from agents.detection_agent import detection_agent, get_camera_name
 from agents.decision_agent import decision_agent
 from agents.response_agent import ws_clients, ws_lock
@@ -29,6 +30,10 @@ STATE_COLORS = {
     "LOITERING": (0,   165, 255),
     "THREAT":    (0,   0,   255),
 }
+
+_stream_cache = {}
+_cache_lock = threading.Lock()
+_cached_disarmed_frame = None
 
 
 def _draw_overlay(frame: np.ndarray, camera_id: int) -> np.ndarray:
@@ -117,38 +122,70 @@ def _make_disarmed_frame() -> bytes:
     return buf.tobytes()
 
 
+def _get_cached_or_encode_frame(camera_id: int) -> bytes:
+    """Get the annotated JPEG frame from cache if unchanged, otherwise encode and update cache."""
+    global _cached_disarmed_frame
+
+    # 1. Disarmed State Cache
+    if not detection_agent._armed:
+        if _cached_disarmed_frame is None:
+            _cached_disarmed_frame = _make_disarmed_frame()
+        return _cached_disarmed_frame
+
+    # 2. Get frame and detection update timestamps
+    frame_ts = getattr(detection_agent, "get_snapshot_timestamp", lambda cid: 0.0)(camera_id)
+    result = detection_agent.get_result(camera_id)
+    det_ts = result.hardware_timestamp if result else 0.0
+
+    # 3. Check cache
+    with _cache_lock:
+        cached = _stream_cache.get(camera_id)
+        if cached and cached.get("frame_ts") == frame_ts and cached.get("det_ts") == det_ts:
+            return cached["jpeg_bytes"]
+
+    # 4. Cache Miss: generate the annotated frame
+    frame = detection_agent.get_snapshot(camera_id)
+    if frame is None:
+        placeholder = np.zeros((360, 640, 3), dtype=np.uint8)
+        cv2.putText(placeholder, "Connecting...", (220, 180),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (80, 80, 80), 2)
+        frame = placeholder
+    else:
+        frame = _draw_overlay(frame, camera_id)
+
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    jpeg_bytes = buf.tobytes()
+
+    # 5. Update Cache
+    with _cache_lock:
+        _stream_cache[camera_id] = {
+            "frame_ts": frame_ts,
+            "det_ts": det_ts,
+            "jpeg_bytes": jpeg_bytes
+        }
+
+    return jpeg_bytes
+
+
 def _frame_generator(camera_id: int):
     """MJPEG frame generator — capped at 25fps with persistent overlay."""
     frame_interval = 1.0 / 25  # 25fps cap
     while True:
         t0 = time.time()
 
-        # ── Disarmed: serve black placeholder, don't touch camera hardware ──
-        if not detection_agent._armed:
-            jpg = _make_disarmed_frame()
-            yield (
-                b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                + jpg
-                + b"\r\n"
-            )
-            time.sleep(1.0)   # 1fps when idle — zero CPU waste
-            continue
-
-        frame = detection_agent.get_snapshot(camera_id)
-        if frame is None:
-            placeholder = np.zeros((360, 640, 3), dtype=np.uint8)
-            cv2.putText(placeholder, "Connecting...", (220, 180),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (80, 80, 80), 2)
-            frame = placeholder
-        else:
-            frame = _draw_overlay(frame, camera_id)
-
-        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        is_armed = detection_agent._armed
+        jpg = _get_cached_or_encode_frame(camera_id)
+        
         yield (
             b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-            + buf.tobytes()
+            + jpg
             + b"\r\n"
         )
+
+        if not is_armed:
+            time.sleep(1.0)   # 1fps when disarmed — zero CPU waste
+            continue
+
         # Sleep remaining time to maintain target fps
         elapsed = time.time() - t0
         sleep_t = max(0.0, frame_interval - elapsed)
@@ -157,8 +194,17 @@ def _frame_generator(camera_id: int):
 
 
 @router.get("/stream/{camera_id}")
-def video_stream(camera_id: int):
-    """MJPEG stream — no auth required so <img> tags work directly."""
+def video_stream(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_header_or_query)
+):
+    """MJPEG stream — requires authentication (checks token and camera ownership)."""
+    # Verify camera ownership
+    cam = db.query(Camera).filter(Camera.id == camera_id, Camera.user_id == current_user.id).first()
+    if not cam:
+        raise HTTPException(403, "Access denied to this camera feed")
+
     return StreamingResponse(
         _frame_generator(camera_id),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -166,8 +212,17 @@ def video_stream(camera_id: int):
 
 
 @router.get("/snapshot/{camera_id}")
-def snapshot(camera_id: int):
-    """Single JPEG snapshot for zone editor canvas."""
+def snapshot(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_from_header_or_query)
+):
+    """Single JPEG snapshot for zone editor canvas (authenticated)."""
+    # Verify camera ownership
+    cam = db.query(Camera).filter(Camera.id == camera_id, Camera.user_id == current_user.id).first()
+    if not cam:
+        raise HTTPException(403, "Access denied to this camera snapshot")
+
     frame = detection_agent.get_snapshot(camera_id)
     if frame is None:
         raise HTTPException(404, "No frame available")

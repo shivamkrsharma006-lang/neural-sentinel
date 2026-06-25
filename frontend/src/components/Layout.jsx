@@ -3,15 +3,17 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import {
   LayoutDashboard, Camera, ShieldAlert, Users, Settings,
-  LogOut, Shield, WifiOff
+  LogOut, Shield, WifiOff, FileText, Tv
 } from 'lucide-react'
 import { backendState } from '../api/client'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/monitor', label: 'AI Monitor', icon: Tv },
   { to: '/cameras', label: 'Cameras', icon: Camera },
   { to: '/events', label: 'Events', icon: ShieldAlert },
   { to: '/enroll', label: 'Enroll Faces', icon: Users },
+  { to: '/summary', label: 'Activity Summary', icon: FileText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

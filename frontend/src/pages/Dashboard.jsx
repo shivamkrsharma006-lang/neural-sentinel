@@ -225,6 +225,7 @@ export default function Dashboard() {
                     index={idx + 1} 
                     liveEvents={liveEvents} 
                     isArmed={isArmed} 
+                    token={token}
                     onClick={() => setFullscreenCamIdx(idx)}
                   />
                 ))}
@@ -333,6 +334,7 @@ export default function Dashboard() {
                 index={idx + 1} 
                 liveEvents={liveEvents} 
                 isArmed={isArmed} 
+                token={token}
                 onClick={() => setFullscreenCamIdx(idx)} 
               />
             ))}
@@ -353,7 +355,7 @@ export default function Dashboard() {
 
           <div className="fullscreen-stream-container">
             <img
-              src={`/stream/${cameras[fullscreenCamIdx].id}`}
+              src={`/stream/${cameras[fullscreenCamIdx].id}?token=${token}`}
               alt={cameras[fullscreenCamIdx].name}
               className="fullscreen-stream-feed"
               onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect fill="%23111827" width="640" height="360"/><text fill="%23475569" font-family="Inter" font-size="18" x="50%" y="50%" text-anchor="middle" dy=".3em">No Signal</text></svg>' }}
@@ -374,7 +376,7 @@ export default function Dashboard() {
   )
 }
 
-function CameraCell({ camera, index, liveEvents, isArmed, onClick }) {
+function CameraCell({ camera, index, liveEvents, isArmed, token, onClick }) {
   const [alertLevel, setAlertLevel] = useState(null)
   const [camEnabled, setCamEnabled] = useState(camera.status !== 'disabled')
   const [toggling, setToggling] = useState(false)
@@ -393,12 +395,12 @@ function CameraCell({ camera, index, liveEvents, isArmed, onClick }) {
   useEffect(() => {
     if (imgRef.current) {
       if (isArmed === true && camEnabled) {
-        imgRef.current.src = `/stream/${camera.id}`
+        imgRef.current.src = `/stream/${camera.id}?token=${token}`
       } else {
         imgRef.current.src = ''
       }
     }
-  }, [isArmed, camEnabled, camera.id])
+  }, [isArmed, camEnabled, camera.id, token])
 
   const toggleCamera = async () => {
     if (toggling) return
@@ -442,7 +444,7 @@ function CameraCell({ camera, index, liveEvents, isArmed, onClick }) {
         <img
           ref={imgRef}
           className="camera-feed"
-          src={`/stream/${camera.id}`}
+          src={`/stream/${camera.id}?token=${token}`}
           alt={displayLabel}
           onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect fill="%23111827" width="640" height="360"/><text fill="%23475569" font-family="Inter" font-size="18" x="50%" y="50%" text-anchor="middle" dy=".3em">No Signal</text></svg>' }}
         />

@@ -116,13 +116,13 @@ def _kmeans_numpy(
     max_iter: int = 10,
     seed: int = 42,
 ) -> tuple:
-    """Lightweight k-means clustering using only numpy.
+    """Lightweight k-means clustering using C++ cv2.kmeans for sub-millisecond execution.
 
     Args:
         pixels: ``(N, 3)`` float32 array of HSV values.
         k: Number of clusters.
         max_iter: Maximum number of Lloyd iterations.
-        seed: Random seed for reproducible centroid initialisation.
+        seed: Ignored (kept for signature compatibility).
 
     Returns:
         Tuple of ``(centers, labels, counts)`` where:
@@ -130,36 +130,29 @@ def _kmeans_numpy(
         - labels:  ``(N,)`` cluster assignment per pixel.
         - counts:  ``(k,)`` number of pixels in each cluster.
     """
-    rng = np.random.RandomState(seed)
     n = pixels.shape[0]
     k = min(k, n)  # can't have more clusters than pixels
+    if k <= 0:
+        return np.zeros((0, 3)), np.zeros(n, dtype=np.int32), np.zeros(0, dtype=np.int32)
 
-    # Forgy initialisation: pick k random data points
-    indices = rng.choice(n, size=k, replace=False)
-    centers = pixels[indices].copy()
+    # Convert to float32 (OpenCV requirements)
+    if pixels.dtype != np.float32:
+        pixels = pixels.astype(np.float32)
 
-    labels = np.zeros(n, dtype=np.int32)
+    # OpenCV criteria: (type, max_iter, epsilon)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, 1.0)
 
-    for _ in range(max_iter):
-        # Assignment step — squared Euclidean distances
-        # Shape: (N, k)
-        dists = np.linalg.norm(
-            pixels[:, np.newaxis, :] - centers[np.newaxis, :, :], axis=2
-        )
-        new_labels = np.argmin(dists, axis=1).astype(np.int32)
+    # Run OpenCV C++ K-Means (10 attempts, random initial centers)
+    _, labels, centers = cv2.kmeans(
+        pixels, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
+    )
 
-        # Convergence check
-        if np.array_equal(new_labels, labels):
-            break
-        labels = new_labels
+    # cv2.kmeans returns labels as (N, 1) array, flatten it to (N,)
+    labels = labels.flatten().astype(np.int32)
 
-        # Update step
-        for j in range(k):
-            mask = labels == j
-            if mask.any():
-                centers[j] = pixels[mask].mean(axis=0)
+    # Count occurrences of each cluster label
+    counts = np.bincount(labels, minlength=k).astype(np.int32)
 
-    counts = np.bincount(labels, minlength=k)
     return centers, labels, counts
 
 

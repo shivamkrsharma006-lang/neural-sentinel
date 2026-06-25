@@ -88,8 +88,8 @@ def _build_digest(events: List[Event], camera_names: dict) -> dict:
         identity_groups.append({
             "identity": identity,
             "object_class": group_events[0].object_class,
-            "first_seen": first_seen.isoformat(),
-            "last_seen": last_seen.isoformat(),
+            "first_seen": first_seen.isoformat() + "Z",
+            "last_seen": last_seen.isoformat() + "Z",
             "duration_seconds": duration_seconds,
             "cameras": cameras_seen,
             "zones": zones_seen,
@@ -140,7 +140,7 @@ def _build_digest(events: List[Event], camera_names: dict) -> dict:
                 "object_class": e.object_class,
                 "camera": camera_names.get(e.camera_id, f"camera-{e.camera_id}"),
                 "zone": e.zone.name if e.zone else None,
-                "timestamp": e.timestamp.isoformat(),
+                "timestamp": e.timestamp.isoformat() + "Z",
             })
     notable_events.sort(key=lambda n: n["timestamp"], reverse=True)
 

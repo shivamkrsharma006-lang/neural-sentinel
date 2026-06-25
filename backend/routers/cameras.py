@@ -170,6 +170,119 @@ def resume_camera(
     return {"camera_id": camera_id, "status": "online"}
 
 
+@router.get("/{camera_id}/telemetry")
+def get_camera_telemetry(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get live AI pipeline telemetry, active trackers, FSM behavior states,
+    brightness/contrast metrics, and active pipelines for a specific camera.
+    """
+    import numpy as np
+    cam = db.query(Camera).filter(
+        Camera.id == camera_id, Camera.user_id == current_user.id
+    ).first()
+    if not cam:
+        raise HTTPException(404, "Camera not found")
+
+    urgency = detection_agent._scheduler.get_score(camera_id)
+    result = detection_agent.get_result(camera_id)
+    detections = result.detections if result else []
+
+    person_count = sum(1 for d in detections if d.get("class_name") == "person")
+    vehicle_count = sum(1 for d in detections if d.get("class_name") != "person")
+
+    from agents.decision_agent import decision_agent
+    active_objects = []
+    for d in detections:
+        tid = d.get("track_id")
+        key = (camera_id, tid)
+        state_obj = decision_agent._states.get(key)
+
+        state_name = state_obj.fsm_state.value if state_obj and hasattr(state_obj.fsm_state, "value") else (state_obj.fsm_state if state_obj else "IDLE")
+        identity = state_obj.identity if state_obj else "UNKNOWN"
+        duration = 0.0
+        if state_obj:
+            if hasattr(state_obj, "duration_seconds") and state_obj.duration_seconds > 0:
+                duration = state_obj.duration_seconds
+            elif hasattr(state_obj, "last_observation_time") and hasattr(state_obj, "first_observation_time"):
+                duration = state_obj.last_observation_time - state_obj.first_observation_time
+
+        active_objects.append({
+            "track_id": tid,
+            "class_name": d.get("class_name"),
+            "confidence": d.get("confidence"),
+            "bbox": d.get("bbox"),
+            "fsm_state": state_name,
+            "identity": identity,
+            "duration_seconds": duration,
+        })
+
+    frame = detection_agent.get_snapshot(camera_id)
+    brightness = 0.0
+    contrast = 0.0
+    lighting_condition = "Unknown"
+
+    if frame is not None:
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            brightness = float(np.mean(gray))
+            contrast = float(np.std(gray))
+            if brightness < 50:
+                lighting_condition = "Low Light (Night Mode)"
+            elif brightness < 100:
+                lighting_condition = "Dim (Twilight/Indoor)"
+            else:
+                lighting_condition = "Normal (Well-lit / Daylight)"
+        except Exception:
+            pass
+
+    from utils import face_utils
+    pipelines = {
+        "yolo_object_tracker": {
+            "status": "active",
+            "model_name": "YOLOv8n",
+            "resolution": "640x640 (dynamic projection)",
+        },
+        "arcface_biometrics": {
+            "status": "active" if face_utils.is_available() else "disabled",
+            "model_name": "ArcFace (ResNet100)",
+            "enrolled_faces": len(decision_agent._enrolled_faces),
+        },
+        "color_classifier": {
+            "status": "active",
+            "model_name": "C++ OpenCV K-Means (k=5)",
+        },
+        "fsm_behavior_engine": {
+            "status": "active",
+            "states_tracked": len(decision_agent._states),
+        },
+        "scheduler_deduplicator": {
+            "status": "active",
+            "urgency_score": round(urgency, 3),
+            "stale_drop_threshold": "500ms (stale-drop)",
+        }
+    }
+
+    return {
+        "camera_id": camera_id,
+        "camera_name": cam.name,
+        "status": detection_agent.get_camera_status(camera_id),
+        "person_count": person_count,
+        "vehicle_count": vehicle_count,
+        "total_active_tracks": len(active_objects),
+        "active_objects": active_objects,
+        "environment": {
+            "brightness": round(brightness, 1),
+            "contrast": round(contrast, 1),
+            "lighting": lighting_condition,
+        },
+        "pipelines": pipelines,
+    }
+
+
 def _reload_zones_for_camera(camera_id: int, db: Session):
     from database import Zone
     from agents.decision_agent import decision_agent

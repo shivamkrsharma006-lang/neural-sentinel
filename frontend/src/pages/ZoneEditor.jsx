@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Plus, Trash2, Save, RotateCcw, Minus } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
 
 const ZONE_COLORS = {
   polygon: '#f97316',
@@ -11,6 +12,7 @@ const ZONE_COLORS = {
 }
 
 export default function ZoneEditor() {
+  const token = useAuthStore((s) => s.token)
   const { cameraId } = useParams()
   const navigate = useNavigate()
   const canvasRef = useRef(null)
@@ -37,11 +39,11 @@ export default function ZoneEditor() {
   }, [cameraId])
 
   useEffect(() => {
-    setSnapshot(`/snapshot/${cameraId}?t=${Date.now()}`)
+    setSnapshot(`/snapshot/${cameraId}?token=${token}&t=${Date.now()}`)
     setSnapshotError(false)
     loadZones()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraId])  // loadZones excluded — stable identity via useCallback on cameraId
+  }, [cameraId, token])  // loadZones excluded — stable identity via useCallback on cameraId
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current

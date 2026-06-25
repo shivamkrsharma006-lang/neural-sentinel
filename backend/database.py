@@ -61,16 +61,16 @@ class EnrolledFace(Base):
 class Event(Base):
     __tablename__ = "events"
     id = Column(Integer, primary_key=True, index=True)
-    camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False)
+    camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False, index=True)
     zone_id = Column(Integer, ForeignKey("zones.id"), nullable=True)
     event_type = Column(String, nullable=False)  # LOITERING, INTRUSION, TRIPWIRE, SPEEDGATE
     risk_score = Column(Float, default=0.0)
-    risk_level = Column(String, default="LOW")   # LOW, MEDIUM, HIGH, CRITICAL
+    risk_level = Column(String, default="LOW", index=True)   # LOW, MEDIUM, HIGH, CRITICAL
     identity = Column(String, default="UNKNOWN")
-    object_class = Column(String, default="person")
+    object_class = Column(String, default="person", index=True)
     confidence = Column(Float, default=0.0)
     frame_path = Column(String, default="")
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     # ── V4 Metadata Pipeline — rich event attributes ─────────────────────────
     bbox_json = Column(Text, default="")           # "[x1,y1,x2,y2]" bounding box
     direction = Column(String, default="")          # entering, exiting, stationary, crossing
@@ -95,6 +95,12 @@ class AlertConfig(Base):
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_camera_id ON events (camera_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_risk_level ON events (risk_level)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_object_class ON events (object_class)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp)"))
 
 
 def get_db():

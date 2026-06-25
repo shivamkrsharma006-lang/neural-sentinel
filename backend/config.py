@@ -50,5 +50,8 @@ RISK_THRESHOLD = float(os.getenv("RISK_THRESHOLD","0.6"))   # R_threshold for al
 # ── Alert cooldown ────────────────────────────────────────────────────────────
 ALERT_COOLDOWN = int(os.getenv("ALERT_COOLDOWN", "30"))
 
+# ── Gemini API Key ────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
 CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000", "*"]
 

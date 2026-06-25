@@ -136,8 +136,7 @@ app.include_router(stream.router)
 app.include_router(system.router)
 app.include_router(digest.router)
 
-# ── Serve evidence frames from disk (fallback for frames saved before restart) ───────
-app.mount("/frames", StaticFiles(directory=str(FRAMES_DIR)), name="frames")
+# ── Serve evidence frames from disk (fallback removed for security; served via authenticated API) ───────
 
 
 @app.middleware("http")
