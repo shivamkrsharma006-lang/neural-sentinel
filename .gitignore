@@ -1,11 +1,6 @@
 # Python
 backend/venv/
-backend/__pycache__/
-backend/agents/__pycache__/
-backend/routers/__pycache__/
-backend/models/__pycache__/
-backend/utils/__pycache__/
-__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 
@@ -14,6 +9,7 @@ frontend/node_modules/
 frontend/dist/
 
 # Database (local dev data)
+*.db
 backend/neural_sentinel.db
 data/
 

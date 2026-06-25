@@ -143,12 +143,21 @@ class DecisionAgent:
     # and handles YOLO track loss during partial occlusion (1-3 frame dropout).
     HYSTERESIS_SECONDS = 3.0
 
+    # How long a verified identity stays in the camera-level cache (seconds)
+    VERIFIED_CACHE_TTL = 300.0  # 5 minutes
+
     def __init__(self):
         self._zones: Dict[int, List[dict]] = {}
         self._states: Dict[Tuple[int, int], ObjectState] = {}
         self._enrolled_faces: List[Tuple[str, np.ndarray]] = []
         self._violation_callbacks = []
         self._frame_dims: Dict[int, Tuple[int, int]] = {}
+        # ── Verified Identity Cache ────────────────────────────────────────────
+        # Remembers recently verified people per camera so that when ByteTrack
+        # reassigns a new track_id to the same person, we can instantly
+        # re-identify them from their embedding without waiting for dwell→THREAT.
+        # Structure: {camera_id: [(name, embedding, last_seen_time)]}
+        self._verified_cache: Dict[int, List[Tuple[str, np.ndarray, float]]] = {}
 
     # ── Zone management ───────────────────────────────────────────────────────
     def set_zones(self, camera_id: int, zones: List[dict]):
@@ -257,7 +266,8 @@ class DecisionAgent:
         dwell_threshold = config.get("dwell_time", 5.0)
 
         if inside:
-            if state.fsm_state in (FSMState.IDLE, FSMState.ENTERING):
+            state.zone_exit_time = None
+            if state.fsm_state == FSMState.IDLE:
                 state.fsm_state = FSMState.ENTERING
                 state.zone_id = zone_id
                 state.zone_name = zone.get("name", "")
@@ -266,24 +276,36 @@ class DecisionAgent:
 
             elif state.fsm_state == FSMState.ENTERING:
                 state.fsm_state = FSMState.PRESENT
+                state.zone_id = zone_id
+                state.zone_name = zone.get("name", "")
+
+            # Run biometric check on every frame inside the zone if not verified yet
+            verified_name = self._check_biometrics_if_needed(state, det, frame, now)
+            if verified_name:
+                # If verified, trigger event immediately to record verified access, bypassing cooldown
+                self._accumulate_and_fire(
+                    state, det, zone, zone_id, "VERIFIED_ACCESS", frame, now, bypass_cooldown=True
+                )
 
             if state.first_entry_time:
                 dwell = now - state.first_entry_time
-                if dwell >= dwell_threshold and state.fsm_state not in (FSMState.LOITERING, FSMState.THREAT):
-                    state.fsm_state = FSMState.LOITERING
+                
+                # Only escalate or run loitering/threat logic for UNKNOWN tracks
+                if state.identity == "UNKNOWN":
+                    if dwell >= dwell_threshold and state.fsm_state not in (FSMState.LOITERING, FSMState.THREAT):
+                        state.fsm_state = FSMState.LOITERING
 
-                if dwell >= dwell_threshold * 2:
-                    # Two-tiered confidence gate: θ_alert required for THREAT
-                    if det.get("confidence", 0) > THETA_ALERT:
-                        # Transition to THREAT on first crossing
-                        if state.fsm_state == FSMState.LOITERING:
+                    # If already in THREAT state, keep compounding severity and checking face
+                    if state.fsm_state == FSMState.THREAT:
+                        self._accumulate_and_fire(
+                            state, det, zone, zone_id, "LOITERING", frame, now
+                        )
+                        return True
+
+                    # Transition to THREAT if dwell meets threshold and confidence is high
+                    elif dwell >= dwell_threshold * 2:
+                        if det.get("confidence", 0) > THETA_ALERT:
                             state.fsm_state = FSMState.THREAT
-                        # CRITICAL: call _accumulate_and_fire on EVERY frame in
-                        # THREAT state — not just on state transition.
-                        # This retries face recognition each frame until a clean
-                        # crop is captured, and keeps the severity integral S(id,t)
-                        # compounding continuously as the patent specifies.
-                        if state.fsm_state == FSMState.THREAT:
                             self._accumulate_and_fire(
                                 state, det, zone, zone_id, "LOITERING", frame, now
                             )
@@ -317,8 +339,6 @@ class DecisionAgent:
                     state.peak_risk_score = 0.0
                 # else: within hysteresis window — preserve FSM state and severity_sum
             return False
-        # Object is inside zone — clear any pending exit timer
-        state.zone_exit_time = None
 
     def _eval_tripwire(self, state, det, zone, zone_id, pixel_pts, config,
                        center, frame, now) -> bool:
@@ -333,10 +353,22 @@ class DecisionAgent:
         if required_dir != "any" and direction != required_dir:
             return False
         if det.get("confidence", 0) > THETA_ALERT:
-            state.fsm_state = FSMState.THREAT
-            state.zone_id = zone_id
-            state.zone_name = zone.get("name", "")
-            self._accumulate_and_fire(state, det, zone, zone_id, "TRIPWIRE_CROSS", frame, now)
+            # Check biometrics first
+            verified_name = self._check_biometrics_if_needed(state, det, frame, now)
+            if state.identity == "UNKNOWN":
+                state.fsm_state = FSMState.THREAT
+                state.zone_id = zone_id
+                state.zone_name = zone.get("name", "")
+                self._accumulate_and_fire(
+                    state, det, zone, zone_id, "TRIPWIRE_CROSS", frame, now
+                )
+            else:
+                state.fsm_state = FSMState.PRESENT
+                state.zone_id = zone_id
+                state.zone_name = zone.get("name", "")
+                self._accumulate_and_fire(
+                    state, det, zone, zone_id, "TRIPWIRE_CROSS", frame, now, bypass_cooldown=True
+                )
             return True
         return False
 
@@ -355,15 +387,166 @@ class DecisionAgent:
         speed_mps = (pixel_dist / max(pixels_per_metre, 1.0)) / 0.033
         if speed_mps > speed_limit:
             if det.get("confidence", 0) > THETA_ALERT:
-                state.fsm_state = FSMState.THREAT
-                state.zone_id = zone_id
-                state.zone_name = zone.get("name", "")
-                self._accumulate_and_fire(state, det, zone, zone_id, "SPEED_GATE", frame, now)
+                verified_name = self._check_biometrics_if_needed(state, det, frame, now)
+                if state.identity == "UNKNOWN":
+                    state.fsm_state = FSMState.THREAT
+                    state.zone_id = zone_id
+                    state.zone_name = zone.get("name", "")
+                    self._accumulate_and_fire(
+                        state, det, zone, zone_id, "SPEED_GATE", frame, now
+                    )
+                else:
+                    state.fsm_state = FSMState.PRESENT
+                    state.zone_id = zone_id
+                    state.zone_name = zone.get("name", "")
+                    self._accumulate_and_fire(
+                        state, det, zone, zone_id, "SPEED_GATE", frame, now, bypass_cooldown=True
+                    )
                 return True
         return False
 
+    def _verify_track(self, state, name: str, sim: float):
+        """Apply verification to a track: set identity, lock face checks, de-escalate."""
+        state.identity = name
+        state.auth_score = sim
+        state.A_id = 1.0
+        state.severity_sum = 0.0
+        state.face_checked = True  # Verification lock for this track
+        state.peak_risk_score = 0.0
+        # Only de-escalate if currently in a threat/loitering state
+        if state.fsm_state in (FSMState.THREAT, FSMState.LOITERING):
+            state.fsm_state = FSMState.PRESENT
+        state.embedding_buffer.clear()
+        logger.info(f"[FACE] ✓ Track {state.track_id} verified as '{name}' (sim={sim:.3f})")
+        # Store in camera-level cache for fast re-identification on track changes
+        self._cache_verified_identity(state.camera_id, name, state.embedding_buffer, sim)
+        self._retroactive_log_correction(state.camera_id, state.track_id, name)
+
+    def _cache_verified_identity(self, camera_id: int, name: str, embedding_buffer: list, sim: float):
+        """Cache a verified identity at the camera level for fast re-ID on track changes."""
+        # We need to store the last known good embedding. Use the enrolled face embedding.
+        for enrolled_name, enrolled_emb in self._enrolled_faces:
+            if enrolled_name == name:
+                cache = self._verified_cache.setdefault(camera_id, [])
+                # Replace existing entry for same name, or add new
+                cache[:] = [(n, e, t) for n, e, t in cache if n != name]
+                cache.append((name, enrolled_emb.copy(), time.time()))
+                logger.info(f"[CACHE] Stored verified identity '{name}' in camera {camera_id} cache")
+                return
+
+    def _check_verified_cache(self, camera_id: int, embedding: np.ndarray, now: float) -> Optional[Tuple[str, float]]:
+        """Check if an embedding matches a recently verified person on this camera."""
+        cache = self._verified_cache.get(camera_id, [])
+        if not cache:
+            return None
+        # Purge expired entries
+        cache[:] = [(n, e, t) for n, e, t in cache if now - t < self.VERIFIED_CACHE_TTL]
+        if not cache:
+            return None
+        # Match against cache
+        for name, cached_emb, _ in cache:
+            sim = float(np.dot(embedding, cached_emb))
+            if sim >= FACE_MATCH_THRESHOLD:
+                logger.info(f"[CACHE] Fast re-ID hit: '{name}' (sim={sim:.3f})")
+                return name, sim
+        return None
+
+    def _check_biometrics_if_needed(self, state, det, frame, now) -> Optional[str]:
+        """
+        Hybrid biometric check — runs for ANY unverified track (face_checked=False):
+
+        Layer 0 — Verified Cache:  Check the embedding against recently verified
+                  people on this camera. This handles ByteTrack reassigning a new
+                  track_id to someone who was JUST verified 2 seconds ago.
+        Layer 1 — Single-frame:   Direct enrolled-face matching.
+        Layer 2 — Rolling avg:    3-frame averaged embedding matching.
+
+        Returns the verified identity name if successful, else None.
+        CRITICAL: For UNKNOWN tracks, face_checked is NEVER set to True by
+        a failed check. It stays False so checks continue every 0.5s forever.
+        """
+        if state.face_checked:
+            return None  # Already verified — skip
+        if not face_utils.is_available() or not self._enrolled_faces:
+            return None
+        # ── Adaptive Backoff Throttle (Patent §F extension) ─────────────────
+        # Aggressive checks initially (0.5s), then back off to save CPU:
+        #   0–120s  → every 0.5s  (aggressive — person just appeared)
+        #   120–300s → every 2.0s  (moderate — likely genuinely unknown)
+        #   300s+    → every 5.0s  (relaxed — still checking, just less often)
+        tracking_duration = now - state.first_entry_time if state.first_entry_time else 0.0
+        if tracking_duration < 120.0:
+            check_interval = 0.5
+        elif tracking_duration < 300.0:
+            check_interval = 2.0
+        else:
+            check_interval = 5.0
+        if now - state.last_face_check_time < check_interval:
+            return None
+        state.last_face_check_time = now
+        state.face_check_count += 1
+
+        bbox = det["bbox"]
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        h, w = frame.shape[:2]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        face_crop = frame[y1:y2, x1:x2]
+        if face_crop.size == 0:
+            return None
+
+        emb = face_utils.extract_embedding(face_crop)
+        if emb is None:
+            return None
+
+        # ── Layer 0: Verified cache (instant, ~0.01ms) ──────────────────────
+        cache_hit = self._check_verified_cache(state.camera_id, emb, now)
+        if cache_hit:
+            name, sim = cache_hit
+            self._verify_track(state, name, sim)
+            return name
+
+        # ── Layer 1: Single-frame enrolled match ────────────────────────────
+        name, sim = face_utils.match_face(
+            emb, self._enrolled_faces, FACE_MATCH_THRESHOLD
+        )
+        logger.info(
+            f"[FACE] Track {state.track_id}: single-frame → "
+            f"'{name or 'UNKNOWN'}' (sim={sim:.3f})"
+        )
+        if name:
+            self._verify_track(state, name, sim)
+            return name
+
+        # ── Layer 2: Rolling multi-frame average ────────────────────────────
+        state.embedding_buffer.append(emb)
+        if len(state.embedding_buffer) > 3:
+            state.embedding_buffer.pop(0)
+
+        if len(state.embedding_buffer) >= 2:
+            avg_emb = np.mean(state.embedding_buffer, axis=0)
+            norm = np.linalg.norm(avg_emb)
+            if norm > 1e-6:
+                avg_emb /= norm
+            name, sim = face_utils.match_face(
+                avg_emb, self._enrolled_faces, FACE_MATCH_THRESHOLD
+            )
+            logger.info(
+                f"[FACE] Track {state.track_id}: averaged ({len(state.embedding_buffer)} frames) → "
+                f"'{name or 'UNKNOWN'}' (sim={sim:.3f})"
+            )
+            if name:
+                self._verify_track(state, name, sim)
+                return name
+
+        # Still UNKNOWN — do NOT lock face_checked, keep trying on next frames
+        state.identity = "UNKNOWN"
+        state.auth_score = 0.0
+        state.A_id = 0.0
+        return None
+
     # ── V2 Risk Engine ────────────────────────────────────────────────────────
-    def _accumulate_and_fire(self, state, det, zone, zone_id, violation_type, frame, now):
+    def _accumulate_and_fire(self, state, det, zone, zone_id, violation_type, frame, now, bypass_cooldown=False):
         """
         Patent §E + §F:
         1. Run biometric check to determine A(id) (authorization tensor).
@@ -376,38 +559,7 @@ class DecisionAgent:
         4. If R ≥ R_threshold → dispatch event.
         """
         # ── Step 1: Instant biometric check & Verification Lock ─────────────────
-        if not state.face_checked and face_utils.is_available() and self._enrolled_faces:
-            # check at most once per 0.5 seconds to save CPU cycles
-            if now - state.last_face_check_time > 0.5:
-                state.last_face_check_time = now
-                bbox = det["bbox"]
-                x1, y1, x2, y2 = [int(v) for v in bbox]
-                h, w = frame.shape[:2]
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(w, x2), min(h, y2)
-                face_crop = frame[y1:y2, x1:x2]
-                if face_crop.size > 0:
-                    emb = face_utils.extract_embedding(face_crop)
-                    if emb is not None:
-                        name, sim = face_utils.match_face(
-                            emb, self._enrolled_faces, FACE_MATCH_THRESHOLD
-                        )
-                        logger.info(
-                            f"[FACE] Track {state.track_id}: check → "
-                            f"'{name or 'UNKNOWN'}' (sim={sim:.3f})"
-                        )
-                        if name:
-                            state.identity = name
-                            state.auth_score = sim
-                            state.A_id = 1.0
-                            state.severity_sum = 0.0
-                            state.face_checked = True  # Locked!
-                            self._retroactive_log_correction(state.camera_id, state.track_id, name)
-                        else:
-                            state.identity = "UNKNOWN"
-                            state.auth_score = 0.0
-                            state.A_id = 0.0
-
+        self._check_biometrics_if_needed(state, det, frame, now)
 
         # ── Step 2: Accumulate S(id,t) = Σ C_i·(1−A_id)·e^(−γ·(t−t_i)) ───────────
         # CORRECT sign: negative exponent so older observations decay (matter less).
@@ -428,16 +580,15 @@ class DecisionAgent:
         # This is what enables proportional urgency modulation (patent §B extension)
         state.peak_risk_score = R
 
-
         # ── Step 4: Dispatch if R ≥ R_threshold OR user is VERIFIED (Access Log) ────
         if R < RISK_THRESHOLD and state.identity == "UNKNOWN":
             logger.debug(f"Risk R={R:.3f} below threshold {RISK_THRESHOLD} — suppressed")
             return
 
-        # Per-track cooldown: severity integral keeps compounding (patent-correct)
-        # but only fire a DB event + alert once per EVENT_COOLDOWN_S seconds.
-        if now - state.last_event_time < self.EVENT_COOLDOWN_S:
-            return
+        # Per-track cooldown: bypass if requested (e.g. for instant verification logging)
+        if not bypass_cooldown:
+            if now - state.last_event_time < self.EVENT_COOLDOWN_S:
+                return
         state.last_event_time = now
 
         # ── V4 Metadata: direction estimation ───────────────────────────────
